@@ -104,8 +104,8 @@ void output_scene_resultPhase(byte resultPattern) {
 
 /* General functions */
 void output_led_showPattern(int pattern) {
-  int myByte=1;  // #### Refactor using  readBit function
-  for(int ledPin=OUT_LED_FIRST_PIN;ledPin<=OUT_LED_LAST_PIN;ledPin++) {
+  int myByte=B00000001;  
+  for(int ledPin=OUT_LED_LAST_PIN;ledPin>=OUT_LED_FIRST_PIN;ledPin--) {
          digitalWrite(ledPin,myByte&pattern);
    myByte=myByte<<1;
   } // for

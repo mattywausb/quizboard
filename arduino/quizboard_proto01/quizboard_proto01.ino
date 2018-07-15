@@ -17,10 +17,10 @@ byte game_state=GST_TEST_MODE_1;
 byte demo_value=1;
 
 struct solution_struct {
-  byte socketsPerAnswere;
-  byte correctSocketForPlug[PLUGCOUNT];
-} solution[] = {/* 0 */{1,{1,3,5,7}},
-                /* 1 */{4,{5,5,1,1}}
+  byte shiftFactor;
+  byte correctAnswereForPlug[PLUGCOUNT];  /* must be adapted to shifted socket index */
+} solution[] = {/* 0 */{0,{0,2,4,6}},
+                /* 1 */{2,{5,5,1,1}}
 };
 
 byte game_solutionIndex=0;
@@ -41,11 +41,11 @@ byte getConnectedPlugsPattern() {  /* assemble byte pattern, representing connec
 byte getCorrectPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
     byte result= B00000000;
     byte socketOfPlug;
+    byte shiftFactor;
     for(int plugIndex=0;plugIndex <PLUGCOUNT;plugIndex++) {
       socketOfPlug=input_getSocketNumberForPlug(plugIndex);
-      if(socketOfPlug>= solution[game_solutionIndex].correctSocketForPlug[plugIndex] &&
-         socketOfPlug<= solution[game_solutionIndex].correctSocketForPlug[plugIndex]+
-                                                   solution[game_solutionIndex].socketsPerAnswere){
+      
+      if(socketOfPlug>>solution[game_solutionIndex].shiftFactor ==  solution[game_solutionIndex].correctAnswereForPlug[plugIndex]){
         bitSet(result,plugIndex);
       }
     }

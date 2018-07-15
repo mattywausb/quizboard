@@ -8,17 +8,16 @@ const byte input_result_button_pin= 2;
 const byte input_poti_pin=2;
 
 /* Plug Port variables and constants */
-#define SOCKETS_PER_PIN 4
+
 
 const byte input_firstPlugChannel_pin=5;
 const byte input_lastPlugChannel_pin=input_firstPlugChannel_pin+PLUGCOUNT-1;
 byte input_currentPlugPosition[PLUGCOUNT];
-const byte input_plugPin[PLUGCOUNT]={4,6,7,8};
+const byte input_plugPin[PLUGCOUNT]={8,7,6,4};
+const byte input_socketPin[]={0,1,2,3};
 
-const byte input_firstSocketPin=0;
-const byte input_lastSocketPin=0;
-const byte input_levelForSocket[SOCKETS_PER_PIN]={246,124,83,22}; // socket level is analogRead>>2  (measured)
-const byte input_levelTolerance=3;
+const byte input_levelForSocket[SOCKETS_PER_PIN]={240,124,83,21}; // socket level is analogRead>>2  (measured)
+const byte input_levelTolerance=15;
 
 
 /* Button state constants and variables */
@@ -59,7 +58,7 @@ byte input_getSocketNumberForPlug(byte plugIndex) {
 void input_setup() {
   pinMode(input_select_button_pin,INPUT_PULLUP);  
   pinMode(input_result_button_pin,INPUT_PULLUP);  
-
+  
    for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
     input_currentPlugPosition[plugIndex]=NOT_PLUGGED;
     pinMode(input_plugPin[plugIndex],INPUT);
@@ -106,48 +105,54 @@ byte current_reading=false;
 /* the central scanning function to determine the plugging state and store it in input_currentPlugPosition array*/
 
 void input_scan_plugs() {
-  byte socketNumber=0;
-  byte plugIsDetected=false;
+
   byte plugIndex;
+  byte socketIndex;
   byte socketPin;
   byte levelIndex;
   int socketPinReadout;
+
+  /* initialize result array */
   for(plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
-      socketNumber=0;
-      plugIsDetected=false;
-      digitalWrite(input_plugPin[plugIndex],HIGH);
-      #ifdef TRACE
-          Serial.print(input_plugPin[plugIndex],DEC);Serial.print(" test:  ");
-      #endif 
-      for(socketPin= input_firstSocketPin ;socketPin<=input_lastSocketPin || plugIsDetected;socketPin++) {
-        delay(5); //provide time to settle down AD converter in case it was just used 
-        socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
-        #ifdef TRACE
-          Serial.print(socketPin);Serial.print(" = ");Serial.print(socketPinReadout); Serial.print("  ");
-        #endif 
-        for(levelIndex=0;levelIndex<SOCKETS_PER_PIN;levelIndex++) {
-          socketNumber++;
-          if(socketPinReadout<=input_levelForSocket[levelIndex]+input_levelTolerance &&
-             socketPinReadout>=input_levelForSocket[levelIndex]-input_levelTolerance) {  /* we found our plug */
-             plugIsDetected=true;
-             break;
-             }
-        } // level loop 
-        if(plugIsDetected) break;
-      } // socket pin loop
-      digitalWrite(input_plugPin[plugIndex],LOW);
-      if(plugIsDetected) {
-        input_currentPlugPosition[plugIndex] =socketNumber;
-        #ifdef TRACE
-         Serial.print("-> (");Serial.print(socketNumber); Serial.print(") ");
-        #endif 
-      }  else  {
-        input_currentPlugPosition[plugIndex] = NOT_PLUGGED;
-        #ifdef TRACE
-          Serial.print("-> XXX ");
-        #endif 
-      } // if plugIsDetected
-   }// plug pin loop
+            input_currentPlugPosition[plugIndex] = NOT_PLUGGED;
+  }
+
+  for(socketIndex=0; socketIndex<SOCKET_PIN_COUNT;socketIndex++) { /* for evey socket */
+     delay(50); //provide time to settle down AD converter in case it was just used 
+     socketPin=input_socketPin[socketIndex];
+     #ifdef TRACE
+           Serial.print(socketPin);Serial.print(">");
+     #endif
+     /* make a blind read to initialize AD input */
+     digitalWrite(input_plugPin[0],HIGH);
+     delay(1); /* wait for high to establish*/
+     socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
+      for(plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
+          digitalWrite(input_plugPin[plugIndex],HIGH);
+          delay(1); /* wait for high to establish*/
+          socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
+          #ifdef TRACE
+              Serial.print(input_plugPin[plugIndex]);Serial.print(":");Serial.print(socketPinReadout);
+           #endif 
+           for(levelIndex=0;levelIndex<SOCKETS_PER_PIN && input_currentPlugPosition[plugIndex]==NOT_PLUGGED ;levelIndex++) {  /* check level */
+           #ifdef TRACE
+              Serial.print(".");
+           #endif              
+           if(socketPinReadout<=input_levelForSocket[levelIndex]+input_levelTolerance &&
+                    socketPinReadout>=input_levelForSocket[levelIndex]-input_levelTolerance) {  /* we found our plug */
+                    input_currentPlugPosition[plugIndex] =(socketIndex*SOCKETS_PER_PIN)+levelIndex;  /* Determine socket number */
+                    #ifdef TRACE
+                      Serial.print("x");
+                     #endif  
+                      break;
+                  }
+             } // level loop      
+           digitalWrite(input_plugPin[plugIndex],LOW);
+          #ifdef TRACE
+             Serial.print("\t=");Serial.print(input_currentPlugPosition[plugIndex]); Serial.print("  \t");
+          #endif 
+      }// plug pin loop
+} // socket pin loop
    #ifdef TRACE
           Serial.println();
    #endif 
