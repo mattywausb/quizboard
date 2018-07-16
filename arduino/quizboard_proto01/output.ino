@@ -1,10 +1,11 @@
 /* OUTPUT functons */
 
-#define OUT_LED_LAST_PIN 12
-#define OUT_LED_FIRST_PIN 9
+const byte led_bus_clock_pin=12;
+const byte led_bus_storage_pin=11;
+const byte led_bus_data_pin=10;
+const byte led_count=8;
+
 // #define OUTPUT_TRACE 1
-
-
 
 unsigned long output_nextFrameSwitchTime=0;
 int output_currentFrameNumber=0;
@@ -16,15 +17,26 @@ const unsigned long game_attention_blink_interval=50; //ms
 //unsigned long output_nextRefreshTime=0;
 //const unsigned long led_animationInterval=40; //25fps
 
-
+byte ouput_led_pattern=0;
 
 void output_setup()
 {
+   /* prepare all necessary pins */
   pinMode(LED_BUILTIN,OUTPUT);
+  pinMode(led_bus_clock_pin,OUTPUT);
+  pinMode(led_bus_storage_pin,OUTPUT);
+  pinMode(led_bus_data_pin,OUTPUT);
+
+  /* intialize BULTIN led */
   digitalWrite(LED_BUILTIN,LOW);
-  for(int ledPin=OUT_LED_FIRST_PIN;ledPin<=OUT_LED_LAST_PIN;ledPin++) {
-    pinMode(ledPin,OUTPUT);
-  }  
+
+  /* initialize the LED Strip  */
+  digitalWrite(led_bus_storage_pin,LOW); 
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,0);
+  digitalWrite(led_bus_storage_pin,HIGH);     
+  digitalWrite(led_bus_storage_pin,LOW); 
+    
+
 }
 
 /* Scenes and sequences */
@@ -35,26 +47,26 @@ void output_setup()
 /*     game select         */
 /* *********************** */
 void output_sequence_startGameSelect(byte programNumber) {
-  byte pattern=B00000001;
+  byte pattern=B00000000;
   output_led_showPattern(0);
         #ifdef OUTPUT_TRACE
           Serial.println("---> Enter output_sequence_startGameSelect <---" );
       #endif
-  for (int i=0;i<PLUGCOUNT;i++) {
-      output_led_showPattern(pattern);
-      #ifdef OUTPUT_TRACE
-          Serial.print(">>");Serial.println(pattern,BIN);
-      #endif
-      delay(game_select_blink_interval);
+  for (byte i=0;i<led_count;i++) {
       pattern=B00000001|pattern<<1; 
-  }
-  for (int i=0;i<PLUGCOUNT;i++) {
       output_led_showPattern(pattern);
       #ifdef OUTPUT_TRACE
           Serial.print(">>");Serial.println(pattern,BIN);
       #endif
       delay(game_select_blink_interval);
+  }
+  for (byte i=0;i<led_count;i++) {
       pattern=pattern<<1; 
+      output_led_showPattern(pattern);
+      #ifdef OUTPUT_TRACE
+          Serial.print(">>");Serial.println(pattern,BIN);
+      #endif
+      delay(game_select_blink_interval);
   }
       #ifdef OUTPUT_TRACE
           Serial.println("---> End of output_sequence_startGameSelect <---" );
@@ -199,14 +211,18 @@ void output_sequence_error() {
 /* **************************************************** */
 /*              General functions                       */
 /* **************************************************** */
-void output_led_showPattern(byte pattern) {
-  byte ledMask=B00000001;  
-  for(byte ledPin=OUT_LED_LAST_PIN;ledPin>=OUT_LED_FIRST_PIN;ledPin--) {
-         digitalWrite(ledPin,pattern&ledMask);
-   ledMask=ledMask<<1;
-      #ifdef OUTPUT_TRACE
-          Serial.println(pattern&ledMask,BIN);
-      #endif
-  } // for
+
+void output_led_showPattern(byte pattern) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
+  ouput_led_pattern=pattern;
+  output_push_data_to_led_bus();
 }
+
+void output_push_data_to_led_bus() {
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,ouput_led_pattern);
+  /* here we will place 7 Seg logic */
+  digitalWrite(led_bus_storage_pin,HIGH);     
+  digitalWrite(led_bus_storage_pin,LOW); 
+
+}
+
 
