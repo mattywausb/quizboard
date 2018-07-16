@@ -7,23 +7,31 @@
 
 
 /* Game state constants */
-#define GST_TEST_MODE_1 1
-#define GST_TEST_MODE_2 2
+#define GST_SELECT_PHASE 2
+#define GST_PLUG_PHASE 3
+#define GST_RESULT_PHASE 4
+#define GST_IDLE 99
+#define GST_PLUG_TEST_MODE 0
+#define GST_SOCKET_TEST_MODE 1
+
 #define GST_PLAY 100
 #define GST_SHOW_RESULT 200
 
-byte game_state=GST_TEST_MODE_1;
+byte game_state=GST_SELECT_PHASE;
 
-byte demo_value=1;
+byte game_selected_program=0;
+byte game_solutionIndex=0;
+const byte game_solution_program_offset=2;
+const byte game_program_count=4;  /* Test + Solution variations */
 
 struct solution_struct {
   byte shiftFactor;
-  byte correctAnswereForPlug[PLUGCOUNT];  /* must be adapted to shifted socket index */
+  byte correctAnswereForPlug[PLUGCOUNT];  /* counts from 1 - n */
 } solution[] = {/* 0 */{0,{0,2,4,6}},
                 /* 1 */{2,{5,5,1,1}}
 };
 
-byte game_solutionIndex=0;
+
 
 /* some helping functions */
 
@@ -45,7 +53,7 @@ byte getCorrectPlugsPattern() {  /* assemble byte pattern, representing connecte
     for(int plugIndex=0;plugIndex <PLUGCOUNT;plugIndex++) {
       socketOfPlug=input_getSocketNumberForPlug(plugIndex);
       
-      if(socketOfPlug>>solution[game_solutionIndex].shiftFactor ==  solution[game_solutionIndex].correctAnswereForPlug[plugIndex]){
+      if(socketOfPlug>>solution[game_solutionIndex].shiftFactor ==  solution[game_solutionIndex].correctAnswereForPlug[plugIndex]-1){  /* Correct result is stored as 1-n, so we must decrease by 1 */
         bitSet(result,plugIndex);
       }
     }
@@ -68,46 +76,77 @@ void setup() {
    delay(2000);
    output_led_showPattern(0);
    Serial.println("----- running now ---->");
+   output_sequence_startGameSelect(game_selected_program);
 
 }
 
 /* -------- loop() ----------------------*/
 void loop() {
 
-  /* Get all input */
+ /* Get all input */
   input_scan_switches();
 
-  /* Evaluate input depending on  game_state */
+ /* Always switch to select phase, when select is pressed and not already in select state */
+  if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
+            game_state=GST_SELECT_PHASE;
+            output_sequence_startGameSelect(game_selected_program);
+            return; /* Bail out here, since we dont want the keypress to be inteptreted further */
+ }
+ 
+  /* Process game logic  depending on  game_state */
   switch(game_state) {
-    case GST_TEST_MODE_1: /* track the connecting of pins, move to mode 2 when result is pressed  */
-           input_scan_plugs(); /* we only scan in this mode, so result will be freezed when pressing result */
+    
+    case GST_SELECT_PHASE: /* Switch through program number, present number, switch to PLUG PHASE when select is pressed  */
+            if(input_resultGotPressed()) {
+              game_selected_program+=1;
+              if(game_selected_program>=game_program_count) game_selected_program=0;
+            }
+            output_scene_gameSelect(game_selected_program);
+            if(input_selectGotPressed()) {
+              if(game_selected_program>=game_solution_program_offset) { /* game level selected, and we start */
+                  game_solutionIndex=game_selected_program-game_solution_program_offset;
+                  game_state=GST_PLUG_PHASE;
+                  output_sequence_startGame();
+              } else {
+                game_state=game_selected_program;
+              }
+              break;
+            }
+            break;
+ 
+    
+    case GST_PLUG_PHASE: /* track the connecting of pins, move to mode 2 when result is pressed  */
+           input_scan_plugs(); /* we only scan in this mode, so result will be frozen when pressing result */
 
            output_scene_pluggingPhase(getConnectedPlugsPattern());
            
            if(input_resultGotPressed()) {
-           game_state=GST_TEST_MODE_2;
-           output_sequence_presentResult(getCorrectPlugsPattern());
-            }
+              game_state=GST_RESULT_PHASE;
+              output_sequence_presentResult(getCorrectPlugsPattern());
+           }
 
            break;
            
-    case GST_TEST_MODE_2:  /* display result, move to mode 1 when select is pressed */
+    case GST_RESULT_PHASE:  /* display result, move to mode 1 when select is pressed */
            if(input_resultGotPressed()) {
                   output_sequence_error();
                   break;
            }
            output_scene_resultPhase(getCorrectPlugsPattern());
-           
-           if(input_selectGotPressed()) {
-            game_state=GST_TEST_MODE_1;
-            break;
-           }
+ 
            break;
-    default:
-          output_sequence_error();
-          game_state=GST_TEST_MODE_1;
 
+    default: /* something bad happened */
+          output_sequence_error();
+          #ifdef TRACE
+             Serial.print("unhandled game state:");Serial.println(game_state);
+             delay(2000);
+          #endif 
+          game_state=GST_SELECT_PHASE;
           
   } // switch game_state
+
+
+
   
 } /*   -----  loop() -------- */
