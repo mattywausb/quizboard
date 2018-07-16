@@ -11,8 +11,9 @@
 #define GST_PLUG_PHASE 3
 #define GST_RESULT_PHASE 4
 #define GST_IDLE 99
-#define GST_PLUG_TEST_MODE 0
-#define GST_SOCKET_TEST_MODE 1
+
+#define GST_SOCKET_TEST_MODE 0
+#define GST_PLUG_TEST_MODE 1
 
 #define GST_PLAY 100
 #define GST_SHOW_RESULT 200
@@ -111,6 +112,11 @@ void loop() {
                   output_sequence_startGame();
               } else {
                 game_state=game_selected_program;
+                switch(game_state) {
+                  case GST_SOCKET_TEST_MODE:
+                          output_sequence_socket_test();
+                          break;
+                }
               }
               break;
             }
@@ -137,7 +143,12 @@ void loop() {
            output_scene_resultPhase(getCorrectPlugsPattern());
  
            break;
-
+           
+    case GST_SOCKET_TEST_MODE:
+           input_scan_plugs();
+           output_scene_socket_test(input_getSocketNumberForPlug(0)) ; /* restricted to Plug 0 */
+           break;
+    
     default: /* something bad happened */
           output_sequence_error();
           #ifdef TRACE

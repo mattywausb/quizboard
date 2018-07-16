@@ -117,7 +117,7 @@ void output_sequence_presentResult(byte resultPattern){ /*### tbd add some anima
 
 void output_scene_resultPhase(byte resultPattern) {
     if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
-         #ifdef TRACE
+         #ifdef OUTPUT_TRACE
           Serial.print("output_scene_resultPhase: Frame switch at "); Serial.println(output_nextFrameSwitchTime);
         #endif 
           if(++output_currentFrameNumber > 1) output_currentFrameNumber=0;
@@ -139,6 +139,42 @@ void output_scene_resultPhase(byte resultPattern) {
 
    }
 }
+/* *********************** */
+/*      socket test        */
+/* *********************** */
+
+void output_sequence_socket_test() {
+   output_currentFrameNumber=0;
+   output_nextFrameSwitchTime=0;
+}
+
+void output_scene_socket_test(byte socketNumber) {
+  byte pattern=0;
+  bitSet(pattern,socketNumber>>1);
+  if(bitRead(socketNumber,0)==0) { /* even socket */
+    if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
+          if(++output_currentFrameNumber > 1) output_currentFrameNumber=0;
+          /* initialize new frame */
+          switch(output_currentFrameNumber) {
+             case 0: 
+                                /* output_led_showPattern(B10101010); */ 
+                                output_led_showPattern(0);
+                                digitalWrite(LED_BUILTIN,HIGH);
+                                break;            
+             case 1: 
+                                /* output_led_showPattern(B01010101); */ 
+                                output_led_showPattern(pattern);   
+                                digitalWrite(LED_BUILTIN,LOW);
+                                break;
+
+          } //switch
+          output_nextFrameSwitchTime=millis()+game_select_blink_interval;
+    }
+  } else {  /* even socket */
+      output_led_showPattern(pattern); 
+  }
+}
+  
 
 /* *********************** */
 /*      error              */
