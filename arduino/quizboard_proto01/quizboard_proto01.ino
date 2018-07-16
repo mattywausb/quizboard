@@ -22,13 +22,15 @@ byte game_state=GST_SELECT_PHASE;
 byte game_selected_program=0;
 byte game_solutionIndex=0;
 const byte game_solution_program_offset=2;
-const byte game_program_count=4;  /* Test + Solution variations */
+const byte game_program_count=6;  /* Test + Solution variations */
 
 struct solution_struct {
   byte shiftFactor;
   byte correctAnswereForPlug[PLUGCOUNT];  /* counts from 1 - n */
-} solution[] = {/* 0 */{0,{0,2,4,6}},
-                /* 1 */{2,{5,5,1,1}}
+} solution[] = {/* 0 */{0,{5,8,3,6}},
+                /* 1 */{1,{3,2,4,1}},
+                /* 1 */{1,{2,4,3,1}},
+                /* 0 */{0,{2,1,4,8}},
 };
 
 
