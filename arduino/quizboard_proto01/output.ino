@@ -10,9 +10,12 @@ const byte led_count=8;
 unsigned long output_nextFrameSwitchTime=0;
 int output_currentFrameNumber=0;
 
-const unsigned long game_result_blink_interval=350; //ms
-const unsigned long game_select_blink_interval=200; //ms
-const unsigned long game_attention_blink_interval=50; //ms
+/* Animation speeds */
+const unsigned int game_result_blink_interval=350; //ms
+const unsigned int game_select_blink_interval=150; //ms
+const unsigned int game_attention_blink_interval=50; //ms
+
+const unsigned int game_start_frame_delay=700; //ms
 
 //unsigned long output_nextRefreshTime=0;
 //const unsigned long led_animationInterval=40; //25fps
@@ -102,11 +105,15 @@ void output_scene_gameSelect(byte programNumber) {
 /*      plug phase             */
 /* *********************** */
 void output_sequence_startGame() {
-  output_led_showPattern(255);   
-  delay(2000);
-  output_led_showPattern(0);   
-  output_currentFrameNumber=0;
-  output_nextFrameSwitchTime=0;
+  byte pattern=B11111111;
+  byte index=0;
+
+  for(index=0;index<4;index++) {
+    output_led_showPattern(pattern);
+    bitClear(pattern,3-index);
+    bitClear(pattern,4+index);
+    delay(game_start_frame_delay);   
+  }
   digitalWrite(LED_BUILTIN,HIGH);
 }
 
