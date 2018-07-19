@@ -1,11 +1,15 @@
 /* OUTPUT functons */
 
+// #define OUTPUT_TRACE 1
+
+#define SPACE_CHAR_INDEX 40
+
 const byte led_bus_clock_pin=12;
 const byte led_bus_storage_pin=11;
 const byte led_bus_data_pin=10;
 const byte led_count=8;
 
-// #define OUTPUT_TRACE 1
+
 
 unsigned long output_nextFrameSwitchTime=0;
 int output_currentFrameNumber=0;
@@ -21,6 +25,7 @@ const unsigned int game_start_frame_delay=700; //ms
 //const unsigned long led_animationInterval=40; //25fps
 
 byte ouput_led_pattern=0;
+byte ouput_7seg_charIndex=SPACE_CHAR_INDEX;
 
 void output_setup()
 {
@@ -33,9 +38,10 @@ void output_setup()
   /* intialize BULTIN led */
   digitalWrite(LED_BUILTIN,LOW);
 
-  /* initialize the LED Strip  */
+  /* initialize the 7Segment and LED Strip  */
   digitalWrite(led_bus_storage_pin,LOW); 
-  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,0);
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,0); // Register 1
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,0); // Register 2
   digitalWrite(led_bus_storage_pin,HIGH);     
   digitalWrite(led_bus_storage_pin,LOW); 
     
@@ -75,9 +81,11 @@ void output_sequence_startGameSelect(byte programNumber) {
           Serial.println("---> End of output_sequence_startGameSelect <---" );
           delay(5000);
       #endif
-  output_scene_gameSelect(programNumber);
+      
   output_currentFrameNumber=0;
-  output_nextFrameSwitchTime=0;  
+  output_nextFrameSwitchTime=0; 
+  output_scene_gameSelect(programNumber);
+ 
 }
 
 void output_scene_gameSelect(byte programNumber) {
@@ -87,13 +95,13 @@ void output_scene_gameSelect(byte programNumber) {
           switch(output_currentFrameNumber) {
              case 0: 
                                 /* output_led_showPattern(B10101010); */ 
-                                output_led_showPattern(programNumber);
-                                digitalWrite(LED_BUILTIN,HIGH);
+                                output_7seg_showCharacter(programNumber);
+                                digitalWrite(LED_BUILTIN,LOW);
                                 break;            
              case 1: 
                                 /* output_led_showPattern(B01010101); */ 
-                                output_led_showPattern(programNumber);   
-                                digitalWrite(LED_BUILTIN,LOW);
+                                output_7seg_showCharacter(SPACE_CHAR_INDEX);   
+                                digitalWrite(LED_BUILTIN,HIGH);
                                 break;
 
           } //switch
@@ -104,10 +112,12 @@ void output_scene_gameSelect(byte programNumber) {
 /* *********************** */
 /*      plug phase             */
 /* *********************** */
-void output_sequence_startGame() {
+void output_sequence_startGame(byte programNumber) {
   byte pattern=B11111111;
   byte index=0;
 
+  ouput_7seg_charIndex=programNumber;
+   
   for(index=0;index<4;index++) {
     output_led_showPattern(pattern);
     bitClear(pattern,3-index);
@@ -201,7 +211,7 @@ void output_scene_socket_test(byte socketNumber) {
 
 void output_sequence_error() {
   
-    for(int i=0; i<10;i++) {
+    for(byte i=0; i<10;i++) {
           digitalWrite(LED_BUILTIN,LOW);
           output_led_showPattern(B10011001);
           delay(game_attention_blink_interval);
@@ -224,12 +234,85 @@ void output_led_showPattern(byte pattern) {  /* for convinence, can be ommited b
   output_push_data_to_led_bus();
 }
 
-void output_push_data_to_led_bus() {
-  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,ouput_led_pattern);
-  /* here we will place 7 Seg logic */
-  digitalWrite(led_bus_storage_pin,HIGH);     
-  digitalWrite(led_bus_storage_pin,LOW); 
-
+void output_7seg_showCharacter(byte index) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
+  ouput_7seg_charIndex=index;
+  output_push_data_to_led_bus();
 }
 
+void output_push_data_to_led_bus() {
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,ouput_led_pattern);
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,~getledSegmentCharPattern(ouput_7seg_charIndex));
+  digitalWrite(led_bus_storage_pin,HIGH);     
+  digitalWrite(led_bus_storage_pin,LOW); 
+}
+
+
+byte getledSegmentCharPattern(byte index) { 
+
+/* This is prepared by using a fancy google spreadsheet
+ * The spreadsheet goes as follows 
+ * Enter the segment letters in the order they are lit by the shift register into F1 - M1
+ * Enter 1 into F2 and =F2*2 into G2
+ * Copy G2 to H2-M2 (M2 should be 128 now)
+ * Enter =if(isnumber(find(F$1;$C3));F$2;) into F3 and copy it to G3 - M3
+ * Enter =DEC2HEX(sum(F3:M3)) into D3
+ * Enter 0 into A3
+ * Enter some segment letters into C3, this should result into some Hex code in D3
+ * Enter ="case "&A3&":return 0x"&IF(LEN(D3)<2;"0";"")&D3&"; // "&B3&" ("&C3&")" into E3, this should provide the c code to paste
+ * copy row 3 as many as you need downwards
+ * in column A generate index numbers from 0 upwards (they will be used in the "case" instruction)
+ * Use column B for the character name u will design, Use Column C to enter the segment letters that must be lit
+ * copy column E into your code
+ * If your pin assignments change (e.g. due to layout restrictions), change order of the segment letters in row 1 accordingly an copy the new values again
+ */
+  
+switch (index){
+case 0:return 0xEE; // 0 (abcdef)
+case 1:return 0x82; // 1 (bc)
+case 2:return 0x67; // 2 (abged)
+case 3:return 0xA7; // 3 (abgcd)
+case 4:return 0x8B; // 4 (fgbc)
+case 5:return 0xAD; // 5 (afgcd)
+case 6:return 0xED; // 6 (acdefg)
+case 7:return 0x86; // 7 (abc)
+case 8:return 0xEF; // 8 (abcdefg)
+case 9:return 0xAF; // 9 (abcdfg)
+case 10:return 0xCF; // A (abcefg)
+case 11:return 0xE9; // b (cdefg)
+case 12:return 0x6C; // C (adef)
+case 13:return 0xE3; // d (bcdeg)
+case 14:return 0x6D; // E (adefg)
+case 15:return 0x4D; // F (aefg)
+case 16:return 0xCB; // H (bcefg)
+case 17:return 0xE2; // J (bcde)
+case 18:return 0x68; // L (def)
+case 19:return 0x4F; // P (abefg)
+case 20:return 0xEA; // U (bcdef)
+case 21:return 0x0F; //  (abfg)
+case 22:return 0x07; //  (abg)
+case 23:return 0x0B; //  (bfg)
+case 24:return 0x0D; //  (afg)
+case 25:return 0x0E; //  (abf)
+case 26:return 0x06; //  (ab)
+case 27:return 0xA0; //  (cd)
+case 28:return 0x60; //  (de)
+case 29:return 0x0C; //  (af)
+case 30:return 0x84; //  (ac)
+case 31:return 0x24; //  (ad)
+case 32:return 0x44; //  (ae)
+case 33:return 0x08; //  (f)
+case 34:return 0x04; //  (a)
+case 35:return 0x02; //  (b)
+case 36:return 0x80; //  (c)
+case 37:return 0x20; // _ (d)
+case 38:return 0x40; //  (e)
+case 39:return 0x01; // - (g)
+case 40:return 0x00; // <spc> ()
+case 41:return 0x49; // TL (efg)
+case 42:return 0x83; // TR (bcg)
+case 43:return 0xC4; // X1 (ace)
+case 44:return 0x2A; // X2 (bdf)
+default:return 0x10; //  (p)
+} // end switch
+};
 

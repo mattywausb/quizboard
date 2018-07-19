@@ -18,12 +18,6 @@
 #define GST_PLAY 100
 #define GST_SHOW_RESULT 200
 
-byte game_state=GST_SELECT_PHASE;
-
-byte game_selected_program=0;
-byte game_solutionIndex=0;
-const byte game_solution_program_offset=2;
-const byte game_program_count=6;  /* Test + Solution variations */
 
 struct solution_struct {
   byte shiftFactor;
@@ -34,9 +28,18 @@ struct solution_struct {
                 /* 0 */{0,{2,1,4,8}},
 };
 
+const byte game_test_program_count=2; /* Number of test programms following the real games */
+const byte game_program_count= game_test_program_count + 4;  /* test + real program */
 
+byte game_selected_program=0;
+byte game_state=GST_SELECT_PHASE;
 
 /* some helping functions */
+
+byte getCharIndexForProgram() {
+  if(game_selected_program>=game_test_program_count) return game_selected_program-game_test_program_count;
+  else return game_selected_program+41 /* 41 is first special test char */;
+}
 
 byte getConnectedPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
     byte result= B00000000;
@@ -49,14 +52,16 @@ byte getConnectedPlugsPattern() {  /* assemble byte pattern, representing connec
     return result;
 }
 
-byte getCorrectPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
+byte getCorrectPlugsPattern() {  /* assemble byte pattern, representing correctly placed plugs */
     byte result= B00000000;
     byte socketOfPlug;
     byte shiftFactor;
+    byte solutionIndex=game_selected_program-game_test_program_count;
+    
     for(int plugIndex=0;plugIndex <PLUGCOUNT;plugIndex++) {
       socketOfPlug=input_getSocketNumberForPlug(plugIndex);
       
-      if(socketOfPlug>>solution[game_solutionIndex].shiftFactor ==  solution[game_solutionIndex].correctAnswereForPlug[plugIndex]-1){  /* Correct result is stored as 1-n, so we must decrease by 1 */
+      if(socketOfPlug>>solution[solutionIndex].shiftFactor ==  solution[solutionIndex].correctAnswereForPlug[plugIndex]-1){  /* Correct result is stored as 1-n, so we must decrease by 1 */
         bitSet(result,plugIndex);
       }
     }
@@ -72,14 +77,13 @@ void setup() {
    output_setup();
    input_setup();
   
-
   Serial.println("This is quizboard proto 01.1");
 
    output_led_showPattern(255);
    delay(2000);
    output_led_showPattern(0);
    Serial.println("----- running now ---->");
-   output_sequence_startGameSelect(game_selected_program);
+   output_sequence_startGameSelect(getCharIndexForProgram());
 
 }
 
@@ -92,8 +96,8 @@ void loop() {
  /* Always switch to select phase, when select is pressed and not already in select state */
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
             game_state=GST_SELECT_PHASE;
-            output_sequence_startGameSelect(game_selected_program);
-            return; /* Bail out here, since we dont want the keypress to be inteptreted further */
+            output_sequence_startGameSelect(getCharIndexForProgram());
+            return; /* Bail out here, since we dont want the keypress to trigger more */
  }
  
   /* Process game logic  depending on  game_state */
@@ -104,14 +108,13 @@ void loop() {
               game_selected_program+=1;
               if(game_selected_program>=game_program_count) game_selected_program=0;
             }
-            output_scene_gameSelect(game_selected_program);
+            output_scene_gameSelect(getCharIndexForProgram());
             if(input_selectGotPressed()) {
-              if(game_selected_program>=game_solution_program_offset) { /* game level selected, and we start */
-                  game_solutionIndex=game_selected_program-game_solution_program_offset;
+              if(game_selected_program>=game_test_program_count) { /* game level selected, and we start */
                   game_state=GST_PLUG_PHASE;
-                  output_sequence_startGame();
+                  output_sequence_startGame(getCharIndexForProgram());
               } else {
-                game_state=game_selected_program;
+                game_state=game_selected_program; /* program number represent next game state */
                 switch(game_state) {
                   case GST_SOCKET_TEST_MODE:
                           output_sequence_socket_test();
@@ -120,7 +123,7 @@ void loop() {
               }
               break;
             }
-            break;
+            break; // ** end of GST_SELECT_PHASE
  
     
     case GST_PLUG_PHASE: /* track the connecting of pins, move to mode 2 when result is pressed  */
@@ -132,8 +135,8 @@ void loop() {
               game_state=GST_RESULT_PHASE;
               output_sequence_presentResult(getCorrectPlugsPattern());
            }
-
-           break;
+           
+           break; // ** end of GST_PLUG_PHASE
            
     case GST_RESULT_PHASE:  /* display result, move to mode 1 when select is pressed */
            if(input_resultGotPressed()) {
