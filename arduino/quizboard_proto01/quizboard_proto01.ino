@@ -79,9 +79,9 @@ void setup() {
   
   Serial.println("This is quizboard proto 01.1");
 
-   output_led_showPattern(255);
+   output_led_setPattern(255);
    delay(2000);
-   output_led_showPattern(0);
+   output_led_setPattern(0);
    Serial.println("----- running now ---->");
    output_sequence_startGameSelect(getCharIndexForProgram());
 

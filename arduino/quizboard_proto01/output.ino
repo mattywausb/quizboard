@@ -3,6 +3,7 @@
 // #define OUTPUT_TRACE 1
 
 #define SPACE_CHAR_INDEX 40
+#define ALL_OFF_7SEG_PATTERN 255
 
 const byte led_bus_clock_pin=12;
 const byte led_bus_storage_pin=11;
@@ -24,8 +25,9 @@ const unsigned int game_start_frame_delay=700; //ms
 //unsigned long output_nextRefreshTime=0;
 //const unsigned long led_animationInterval=40; //25fps
 
-byte ouput_led_pattern=0;
-byte ouput_7seg_charIndex=SPACE_CHAR_INDEX;
+byte output_led_pattern=ALL_OFF_7SEG_PATTERN;
+byte output_7seg_charIndexMemory=SPACE_CHAR_INDEX;
+byte output_7seg_charPattern=0;
 
 void output_setup()
 {
@@ -55,15 +57,18 @@ void output_setup()
 /* *********************** */
 /*     game select         */
 /* *********************** */
-void output_sequence_startGameSelect(byte programNumber) {
+void output_sequence_startGameSelect(byte programCharIndex) {
   byte pattern=B00000000;
-  output_led_showPattern(0);
+  output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
+  output_led_pattern=0;
+  output_push_data_to_led_bus();
+  
         #ifdef OUTPUT_TRACE
           Serial.println("---> Enter output_sequence_startGameSelect <---" );
       #endif
   for (byte i=0;i<led_count;i++) {
       pattern=B00000001|pattern<<1; 
-      output_led_showPattern(pattern);
+      output_led_setPattern(pattern);
       #ifdef OUTPUT_TRACE
           Serial.print(">>");Serial.println(pattern,BIN);
       #endif
@@ -71,7 +76,7 @@ void output_sequence_startGameSelect(byte programNumber) {
   }
   for (byte i=0;i<led_count;i++) {
       pattern=pattern<<1; 
-      output_led_showPattern(pattern);
+      output_led_setPattern(pattern);
       #ifdef OUTPUT_TRACE
           Serial.print(">>");Serial.println(pattern,BIN);
       #endif
@@ -84,23 +89,24 @@ void output_sequence_startGameSelect(byte programNumber) {
       
   output_currentFrameNumber=0;
   output_nextFrameSwitchTime=0; 
-  output_scene_gameSelect(programNumber);
+  output_scene_gameSelect(programCharIndex);
  
 }
 
-void output_scene_gameSelect(byte programNumber) {
+void output_scene_gameSelect(byte programCharIndex) {
     if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
           if(++output_currentFrameNumber > 1) output_currentFrameNumber=0;
           /* initialize new frame */
           switch(output_currentFrameNumber) {
              case 0: 
-                                /* output_led_showPattern(B10101010); */ 
-                                output_7seg_showCharacter(programNumber);
+                                /* output_led_setPattern(B10101010); */ 
+                                output_7seg_setCharacter(programCharIndex);
                                 digitalWrite(LED_BUILTIN,LOW);
                                 break;            
              case 1: 
-                                /* output_led_showPattern(B01010101); */ 
-                                output_7seg_showCharacter(SPACE_CHAR_INDEX);   
+                                /* output_led_setPattern(B01010101); */ 
+                                output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
+                                output_push_data_to_led_bus();  
                                 digitalWrite(LED_BUILTIN,HIGH);
                                 break;
 
@@ -112,14 +118,14 @@ void output_scene_gameSelect(byte programNumber) {
 /* *********************** */
 /*      plug phase             */
 /* *********************** */
-void output_sequence_startGame(byte programNumber) {
+void output_sequence_startGame(byte programCharIndex) {
   byte pattern=B11111111;
   byte index=0;
 
-  ouput_7seg_charIndex=programNumber;
-   
+  output_7seg_setCharacter(output_7seg_charIndexMemory);
+  
   for(index=0;index<4;index++) {
-    output_led_showPattern(pattern);
+    output_led_setPattern(pattern);
     bitClear(pattern,3-index);
     bitClear(pattern,4+index);
     delay(game_start_frame_delay);   
@@ -130,7 +136,7 @@ void output_sequence_startGame(byte programNumber) {
 void output_scene_pluggingPhase(byte connectionPattern) {
  
 
-    output_led_showPattern(connectionPattern);
+    output_led_setPattern(connectionPattern);
 
 }
 
@@ -138,7 +144,7 @@ void output_scene_pluggingPhase(byte connectionPattern) {
 /*      result phase       */
 /* *********************** */
 void output_sequence_presentResult(byte resultPattern){ /*### tbd add some animation here */
-   output_led_showPattern(resultPattern); 
+   output_led_setPattern(resultPattern); 
    digitalWrite(LED_BUILTIN,LOW);
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
@@ -153,10 +159,10 @@ void output_scene_resultPhase(byte resultPattern) {
           /* initialize new frame */
           switch(output_currentFrameNumber) {
            case 1: 
-                output_led_showPattern(resultPattern);
+                output_led_setPattern(resultPattern);
                 break;
            case 0: 
-               output_led_showPattern(0);                               
+               output_led_setPattern(0);                               
                break;
 
           } //switch
@@ -186,13 +192,13 @@ void output_scene_socket_test(byte socketNumber) {
           /* initialize new frame */
           switch(output_currentFrameNumber) {
              case 0: 
-                                /* output_led_showPattern(B10101010); */ 
-                                output_led_showPattern(0);
+                                /* output_led_setPattern(B10101010); */ 
+                                output_led_setPattern(0);
                                 digitalWrite(LED_BUILTIN,HIGH);
                                 break;            
              case 1: 
-                                /* output_led_showPattern(B01010101); */ 
-                                output_led_showPattern(pattern);   
+                                /* output_led_setPattern(B01010101); */ 
+                                output_led_setPattern(pattern);   
                                 digitalWrite(LED_BUILTIN,LOW);
                                 break;
 
@@ -200,7 +206,7 @@ void output_scene_socket_test(byte socketNumber) {
           output_nextFrameSwitchTime=millis()+game_select_blink_interval;
     }
   } else {  /* even socket */
-      output_led_showPattern(pattern); 
+      output_led_setPattern(pattern); 
   }
 }
   
@@ -210,17 +216,21 @@ void output_scene_socket_test(byte socketNumber) {
 /* *********************** */
 
 void output_sequence_error() {
-  
+    output_7seg_charPattern=0;
+    
     for(byte i=0; i<10;i++) {
           digitalWrite(LED_BUILTIN,LOW);
-          output_led_showPattern(B10011001);
+          output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
+          output_led_setPattern(B10011001);
           delay(game_attention_blink_interval);
           digitalWrite(LED_BUILTIN,HIGH);
-          output_led_showPattern(B01100110);
+          output_7seg_charPattern=~getledSegmentCharPattern(14); /* E */
+          output_led_setPattern(B01100110);
           delay(game_attention_blink_interval);
     }
      digitalWrite(LED_BUILTIN,LOW);
-     output_led_showPattern(0);
+     output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
+     output_led_setPattern(0);
      output_currentFrameNumber=0;
 }
 
@@ -229,19 +239,20 @@ void output_sequence_error() {
 /*              General functions                       */
 /* **************************************************** */
 
-void output_led_showPattern(byte pattern) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
-  ouput_led_pattern=pattern;
+void output_led_setPattern(byte pattern) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
+  output_led_pattern=pattern;
   output_push_data_to_led_bus();
 }
 
-void output_7seg_showCharacter(byte index) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
-  ouput_7seg_charIndex=index;
+void output_7seg_setCharacter(byte index) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
+  output_7seg_charIndexMemory=index;
+  output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
   output_push_data_to_led_bus();
 }
 
 void output_push_data_to_led_bus() {
-  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,ouput_led_pattern);
-  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,~getledSegmentCharPattern(ouput_7seg_charIndex));
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,output_led_pattern);
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,output_7seg_charPattern);
   digitalWrite(led_bus_storage_pin,HIGH);     
   digitalWrite(led_bus_storage_pin,LOW); 
 }
