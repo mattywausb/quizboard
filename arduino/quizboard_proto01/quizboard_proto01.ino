@@ -45,7 +45,7 @@ struct solution_struct {
 };
 #define LEVEL_COUNT 17
 
-const byte game_test_program_count=2; /* Number of test programms following the real games */
+const byte game_test_program_count=2; /* Number of test programms placed before the real games */
 const byte game_program_count= game_test_program_count + LEVEL_COUNT;  /* test + real program */
 
 byte game_selected_program=0;

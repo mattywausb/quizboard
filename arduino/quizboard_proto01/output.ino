@@ -181,6 +181,7 @@ void output_scene_resultPhase(byte resultPattern) {
 void output_sequence_socket_test() {
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
+   output_7seg_setCharacter(41); /* Tl character */
 }
 
 void output_scene_socket_test(byte socketNumber) {
