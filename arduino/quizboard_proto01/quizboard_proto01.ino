@@ -22,14 +22,31 @@
 struct solution_struct {
   byte shiftFactor;
   byte correctAnswereForPlug[PLUGCOUNT];  /* counts from 1 - n */
-} solution[] = {/* 0 */{0,{5,8,3,6}},
-                /* 1 */{1,{3,2,4,1}},
-                /* 1 */{1,{2,4,3,1}},
-                /* 0 */{0,{2,1,4,8}},
+} solution[] = {
+  /* 0 */{2,{1,2,2,1}},   /* 4x 4:1 (4 sockets 1 category)*/
+  /* 1 */{2,{2,1,2,1}}, 
+  /* 2 */{2,{1,1,2,1}},  
+  /* 3 */{2,{2,1,2,2}},
+  
+  /* 4 */{1,{1,3,4,2}},   /* 4x 2:1 (2 sockets 1 solution)*/
+  /* 5 */{1,{2,3,1,4}},  
+  /* 6 */{1,{2,3,1,4}},  
+  /* 7 */{1,{3,2,4,1}},  
+  /* 8 */{1,{4,3,1,2}},  
+  /* 9 */{1,{4,1,2,3}},
+  
+  /* A */{0,{5,8,3,6}},   /* 4x 1:1 (1 socket 1 solution) */
+  /* b */{0,{7,1,4,2}},   
+  /* C */{0,{6,2,1,5}},   
+  /* d */{0,{4,5,7,1}},   
+  /* E */{0,{3,6,8,4}},   
+  /* F */{0,{1,8,5,3}},   
+  /* H */{0,{8,3,2,7}}
 };
+#define LEVEL_COUNT 17
 
 const byte game_test_program_count=2; /* Number of test programms following the real games */
-const byte game_program_count= game_test_program_count + 4;  /* test + real program */
+const byte game_program_count= game_test_program_count + LEVEL_COUNT;  /* test + real program */
 
 byte game_selected_program=0;
 byte game_state=GST_SELECT_PHASE;
