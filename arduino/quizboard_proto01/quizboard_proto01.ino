@@ -23,19 +23,19 @@ struct solution_struct {
   byte shiftFactor;
   byte correctAnswereForPlug[PLUGCOUNT];  /* counts from 1 - n */
 } solution[] = {
-  /* 0 */{2,{1,2,2,1}},   /* 4x 4:1 (4 sockets 1 category)*/
+  /* 0 */{2,{1,2,2,1}},   /* 4x 4S (4 Sockets for every solution)*/
   /* 1 */{2,{2,1,2,1}}, 
   /* 2 */{2,{1,1,2,1}},  
   /* 3 */{2,{2,1,2,2}},
   
-  /* 4 */{1,{1,3,4,2}},   /* 4x 2:1 (2 sockets 1 solution)*/
-  /* 5 */{1,{2,3,1,4}},  
+  /* 4 */{1,{1,3,4,2}},   /* 4x 2S (2 sockets for every solution)*/
+  /* 5 */{1,{2,4,1,3}},  
   /* 6 */{1,{2,3,1,4}},  
   /* 7 */{1,{3,2,4,1}},  
   /* 8 */{1,{4,3,1,2}},  
   /* 9 */{1,{4,1,2,3}},
   
-  /* A */{0,{5,8,3,6}},   /* 4x 1:1 (1 socket 1 solution) */
+  /* A */{0,{5,8,3,6}},   /* 4x 1S (1 socket for every solution) */
   /* b */{0,{7,1,4,2}},   
   /* C */{0,{6,2,1,5}},   
   /* d */{0,{4,5,7,1}},   
