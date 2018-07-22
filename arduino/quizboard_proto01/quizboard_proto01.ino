@@ -108,7 +108,7 @@ void setup() {
 void loop() {
 
  /* Let imput module handle switch input */
-  input_switches_tick();
+  input_switches_tick(true);
 
  /* Always switch to select phase, when select is pressed and not already in select state */
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
@@ -121,13 +121,8 @@ void loop() {
   switch(game_state) {
     
     case GST_SELECT_PHASE: /* Switch through program number, present number, switch to PLUG PHASE when select is pressed  */
-            if(input_resultGotPressed()) {
-              game_selected_program+=1;
-              if(game_selected_program>=game_program_count) game_selected_program=0;
-              #ifdef TRACE
-                Serial.println(game_selected_program);
-              #endif
-            }
+            game_selected_program=input_getEncoderValue();
+
             output_scene_gameSelect(game_getCharIndexForProgram());
             if(input_selectGotPressed()) {
               if(game_selected_program>=game_test_program_count) { /* game level selected, and we start */

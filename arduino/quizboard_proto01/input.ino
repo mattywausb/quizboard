@@ -2,8 +2,10 @@
 
 #include "mainSettings.h"
 
-#define TRACE_SCAN_PLUG 1
+// Activate trace output of the scan function (good for troube, when sockets are not correctly determined)
+//#define TRACE_PLUGS_SCAN 1
 
+// Activate general trace output
 #define TRACE_INPUT 1
 
 /* Port constants */
@@ -19,7 +21,7 @@ const byte plug_bus_data_pin=7;
 
 
 const unsigned long input_scan_interval = 500; //in milliseconds, never check state before this time is over, with 16 bit registers we have 8 ms latency+debounce until change is detected
-const unsigned long input_scan_tick_max_age = 1000*input_scan_interval; //this will trigger a catchup in the tick function
+const unsigned long input_scan_tick_max_age = 40*input_scan_interval; //this will trigger a catchup in the tick function
 unsigned long input_last_scan_micros = 0;
 
 /* Plug Port variables and constants */
@@ -98,6 +100,10 @@ byte input_getResultButtonIsPressed() {
   return bitRead(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT) ;
 }
 
+byte input_getEncoderValue(){
+  return input_encoder_value;
+}
+
 byte input_getSocketNumberForPlug(byte plugIndex) {  
   return input_currentPlugSocket[plugIndex];
 }
@@ -133,8 +139,8 @@ void input_setup(int encoderRangeMin, int encoderRangeMax) {
 /* ********************************************************************************************************** */
 /* the central scanning function to track the state changes of the buttons and switches                       */
 
-void input_switches_tick() {
-  input_button_flags &=BUTTON_FLAG_TICK_RESET;  /* Remove all "one tick" events from flag memory */
+void input_switches_tick(bool resetEvents) {
+  if(resetEvents) input_button_flags &=BUTTON_FLAG_TICK_RESET;  /* Remove all "one tick" events from flag memory */
   
   if (micros() - input_last_scan_micros < input_scan_interval) return;  /* return if it is to early */ 
   if(micros() - input_last_scan_micros >input_scan_tick_max_age)  input_switches_chatchUp();
@@ -237,11 +243,11 @@ void input_switches_tick() {
 void input_switches_chatchUp() {
   input_last_scan_micros = micros(); // close gap, so we dont get a recursive trap
   #ifdef TRACE_INPUT
-    Serial.println("WARNING: input_switches_chatchUp got triggered");
+    Serial.print("+T+");
   #endif
   /* Scan input until registers are refreshed completely */
   for(byte catchUpCycles=0;catchUpCycles<sizeof(encoder_a_scan_register)*8;catchUpCycles++) { 
-     input_switches_tick();
+     input_switches_tick(true);
      delayMicroseconds( input_scan_interval);
   }
 }
@@ -266,9 +272,8 @@ void input_plugs_scan(){
 
   
   for(socketGroupIndex=0; socketGroupIndex<SOCKET_PIN_COUNT;socketGroupIndex++) { /* for evey socket pin */
-     delay(50); //provide time to settle down AD converter in case it was just used 
      socketPin=input_socketPin[socketGroupIndex];
-     #ifdef TRACE_INPUT
+     #ifdef TRACE_PLUGS_SCAN
            Serial.print(socketPin);Serial.print(">");
      #endif  
 
@@ -283,11 +288,13 @@ void input_plugs_scan(){
           shiftOut(plug_bus_data_pin, plug_bus_clock_pin,MSBFIRST,shiftOutPattern); // TBD: Can be more efficent to just shift the bit we aleady placed
           digitalWrite(plug_bus_storage_pin,HIGH); 
           digitalWrite(plug_bus_storage_pin,LOW);           
-          delay(1); /* wait for high to establish*/
+            input_switches_tick(false); /* keep our scan service happy */
+            delay(1); /* wait for high to establish*/
+            input_switches_tick(false); /* keep our scan service happy */
 
           /* Read the value */
           socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
-          #ifdef TRACE
+          #ifdef TRACE_PLUGS_SCAN
               Serial.print(shiftOutPattern,BIN);Serial.print(":");Serial.print(socketPinReadout);
           #endif 
 
@@ -295,24 +302,26 @@ void input_plugs_scan(){
           for(levelIndex=0;levelIndex<SOCKETS_PER_PIN && 
                            input_currentPlugSocket[plugIndex]==NOT_PLUGGED  // skip this if plug has already been found 
                            ;levelIndex++) {  /* check level */
-           #ifdef TRACE
+           #ifdef TRACE_PLUGS_SCAN
               Serial.print(".");
            #endif              
            if(socketPinReadout<=input_levelForSocket[levelIndex]+input_levelTolerance &&
                     socketPinReadout>=input_levelForSocket[levelIndex]-input_levelTolerance) {  /* we found our plug */
                     input_currentPlugSocket[plugIndex] =(socketGroupIndex*SOCKETS_PER_PIN)+levelIndex;  /* Determine socket number */
-                    #ifdef TRACE
+                    #ifdef TRACE_PLUGS_SCAN
                       Serial.print("x");
                      #endif  
                       break;
                   }
-             } // level loop      
-          #ifdef TRACE
+             } // level loop    
+            input_switches_tick(false); /* keep our scan service happy */  
+          #ifdef TRACE_PLUGS_SCAN
+
              Serial.print("\t=");Serial.print(input_currentPlugSocket[plugIndex]); Serial.print("  \t");
           #endif 
       }// plug pin loop
 } // socket pin loop
-   #ifdef TRACE
+   #ifdef TRACE_PLUGS_SCAN
           Serial.println();
    #endif
 
