@@ -53,12 +53,12 @@ byte game_state=GST_SELECT_PHASE;
 
 /* some helping functions */
 
-byte getCharIndexForProgram() {
+byte game_getCharIndexForProgram() {
   if(game_selected_program>=game_test_program_count) return game_selected_program-game_test_program_count;
   else return game_selected_program+41 /* 41 is first special test char */;
 }
 
-byte getConnectedPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
+byte game_getConnectedPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
     byte result= B00000000;
 
     for(int plugIndex=0;plugIndex <PLUGCOUNT;plugIndex++) {
@@ -69,7 +69,7 @@ byte getConnectedPlugsPattern() {  /* assemble byte pattern, representing connec
     return result;
 }
 
-byte getCorrectPlugsPattern() {  /* assemble byte pattern, representing correctly placed plugs */
+byte game_getCorrectPlugsPattern() {  /* assemble byte pattern, representing correctly placed plugs */
     byte result= B00000000;
     byte socketOfPlug;
     byte shiftFactor;
@@ -92,7 +92,7 @@ void setup() {
   Serial.begin(9600);
   
    output_setup();
-   input_setup();
+   input_setup(0,LEVEL_COUNT-1);
   
   Serial.println("This is quizboard proto 01.1");
 
@@ -100,20 +100,20 @@ void setup() {
    delay(2000);
    output_led_setPattern(0);
    Serial.println("----- running now ---->");
-   output_sequence_startGameSelect(getCharIndexForProgram());
+   output_sequence_startGameSelect(game_getCharIndexForProgram());
 
 }
 
 /* -------- loop() ----------------------*/
 void loop() {
 
- /* Get all input */
-  input_scan_switches();
+ /* Let imput module handle switch input */
+  input_switches_tick();
 
  /* Always switch to select phase, when select is pressed and not already in select state */
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
             game_state=GST_SELECT_PHASE;
-            output_sequence_startGameSelect(getCharIndexForProgram());
+            output_sequence_startGameSelect(game_getCharIndexForProgram());
             return; /* Bail out here, since we dont want the keypress to trigger more */
  }
  
@@ -124,12 +124,15 @@ void loop() {
             if(input_resultGotPressed()) {
               game_selected_program+=1;
               if(game_selected_program>=game_program_count) game_selected_program=0;
+              #ifdef TRACE
+                Serial.println(game_selected_program);
+              #endif
             }
-            output_scene_gameSelect(getCharIndexForProgram());
+            output_scene_gameSelect(game_getCharIndexForProgram());
             if(input_selectGotPressed()) {
               if(game_selected_program>=game_test_program_count) { /* game level selected, and we start */
                   game_state=GST_PLUG_PHASE;
-                  output_sequence_startGame(getCharIndexForProgram());
+                  output_sequence_startGame(game_getCharIndexForProgram());
               } else {
                 game_state=game_selected_program; /* program number represent next game state */
                 switch(game_state) {
@@ -144,13 +147,13 @@ void loop() {
  
     
     case GST_PLUG_PHASE: /* track the connecting of pins, move to mode 2 when result is pressed  */
-           input_scan_plugs(); /* we only scan in this mode, so result will be frozen when pressing result */
+           input_plugs_scan(); /* we only scan in this mode, so result will be frozen for result phase result */
 
-           output_scene_pluggingPhase(getConnectedPlugsPattern());
+           output_scene_pluggingPhase(game_getConnectedPlugsPattern());
            
            if(input_resultGotPressed()) {
               game_state=GST_RESULT_PHASE;
-              output_sequence_presentResult(getCorrectPlugsPattern());
+              output_sequence_presentResult(game_getCorrectPlugsPattern());
            }
            
            break; // ** end of GST_PLUG_PHASE
@@ -160,12 +163,12 @@ void loop() {
                   output_sequence_error();
                   break;
            }
-           output_scene_resultPhase(getCorrectPlugsPattern());
+           output_scene_resultPhase(game_getCorrectPlugsPattern());
  
            break;
            
     case GST_SOCKET_TEST_MODE:
-           input_scan_plugs();
+           input_plugs_scan();
            output_scene_socket_test(input_getSocketNumberForPlug(0)) ; /* restricted to Plug 0 */
            break;
     

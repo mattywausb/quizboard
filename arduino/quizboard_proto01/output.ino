@@ -101,13 +101,11 @@ void output_scene_gameSelect(byte programCharIndex) {
              case 0: 
                                 /* output_led_setPattern(B10101010); */ 
                                 output_7seg_setCharacter(programCharIndex);
-                                digitalWrite(LED_BUILTIN,LOW);
                                 break;            
              case 1: 
                                 /* output_led_setPattern(B01010101); */ 
                                 output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
                                 output_push_data_to_led_bus();  
-                                digitalWrite(LED_BUILTIN,HIGH);
                                 break;
 
           } //switch
@@ -130,14 +128,14 @@ void output_sequence_startGame(byte programCharIndex) {
     bitClear(pattern,4+index);
     delay(game_start_frame_delay);   
   }
-  digitalWrite(LED_BUILTIN,HIGH);
+  /* #TBD: Activation of dot here */
 }
 
 void output_scene_pluggingPhase(byte connectionPattern) {
  
 
     output_led_setPattern(connectionPattern);
-
+  
 }
 
 /* *********************** */
@@ -145,7 +143,7 @@ void output_scene_pluggingPhase(byte connectionPattern) {
 /* *********************** */
 void output_sequence_presentResult(byte resultPattern){ /*### tbd add some animation here */
    output_led_setPattern(resultPattern); 
-   digitalWrite(LED_BUILTIN,LOW);
+  /* #TBD: add blinking of dot here*/
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
 }
@@ -160,9 +158,11 @@ void output_scene_resultPhase(byte resultPattern) {
           switch(output_currentFrameNumber) {
            case 1: 
                 output_led_setPattern(resultPattern);
+                /* #TBD: add blinking of dot here*/
                 break;
            case 0: 
-               output_led_setPattern(0);                               
+               output_led_setPattern(0);       
+               /* #TBD: add blinking of dot here*/                        
                break;
 
           } //switch
@@ -195,12 +195,12 @@ void output_scene_socket_test(byte socketNumber) {
              case 0: 
                                 /* output_led_setPattern(B10101010); */ 
                                 output_led_setPattern(0);
-                                digitalWrite(LED_BUILTIN,HIGH);
+                                /* #TBD: add blinking of dot here*/
                                 break;            
              case 1: 
                                 /* output_led_setPattern(B01010101); */ 
                                 output_led_setPattern(pattern);   
-                                digitalWrite(LED_BUILTIN,LOW);
+                                /* #TBD: add blinking of dot here*/
                                 break;
 
           } //switch
@@ -220,16 +220,16 @@ void output_sequence_error() {
     output_7seg_charPattern=0;
     
     for(byte i=0; i<10;i++) {
-          digitalWrite(LED_BUILTIN,LOW);
+          
           output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
           output_led_setPattern(B10011001);
           delay(game_attention_blink_interval);
-          digitalWrite(LED_BUILTIN,HIGH);
+
           output_7seg_charPattern=~getledSegmentCharPattern(14); /* E */
           output_led_setPattern(B01100110);
           delay(game_attention_blink_interval);
     }
-     digitalWrite(LED_BUILTIN,LOW);
+
      output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
      output_led_setPattern(0);
      output_currentFrameNumber=0;

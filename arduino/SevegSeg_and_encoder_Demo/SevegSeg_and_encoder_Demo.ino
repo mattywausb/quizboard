@@ -1,7 +1,7 @@
-#define TRACE_PER_SERIAL 1
+//#define TRACE_PER_SERIAL 1
 
 // #define OUTPUT_TRACE 1
-#define INPUT_TRACE 1
+//#define INPUT_TRACE 1
 
 /* Interface configuration */
 
@@ -111,7 +111,7 @@ void input_scan_tick() {
 
 
  
-  /* Manage end of transition */
+  /* Track encoder transitions transaction */
     switch(encoder_transition_type) {
       case ENCODER_IDLE_POSITION:
           if(encoder_ab_state_pattern==ENCODER_START_WITH_A_PATTERN ||
@@ -134,7 +134,7 @@ void input_scan_tick() {
             break;
     };
             
-    /* Reset transition flags, when all states are low */
+    /* Reset transition type, when all states are low */
     if(encoder_ab_state_pattern==0) encoder_transition_type=0;
 
 #ifdef INPUT_TRACE
