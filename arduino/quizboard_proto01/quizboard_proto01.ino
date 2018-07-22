@@ -97,7 +97,7 @@ void setup() {
   Serial.println("This is quizboard proto 01.1");
 
    output_led_setPattern(255);
-   delay(2000);
+   delay(1000);
    output_led_setPattern(0);
    Serial.println("----- running now ---->");
    output_sequence_startGameSelect(game_getCharIndexForProgram());
@@ -128,11 +128,13 @@ void loop() {
               if(game_selected_program>=game_test_program_count) { /* game level selected, and we start */
                   game_state=GST_PLUG_PHASE;
                   output_sequence_startGame(game_getCharIndexForProgram());
+                  input_resetPlugResult();
               } else {
                 game_state=game_selected_program; /* program number represent next game state */
                 switch(game_state) {
                   case GST_SOCKET_TEST_MODE:
                           output_sequence_socket_test();
+                          input_resetPlugResult();
                           break;
                 }
               }
@@ -142,7 +144,7 @@ void loop() {
  
     
     case GST_PLUG_PHASE: /* track the connecting of pins, move to mode 2 when result is pressed  */
-           input_plugs_scan(); /* we only scan in this mode, so result will be frozen for result phase result */
+           input_plug_scan_tick(); /* we only scan plug in this mode, so result will be frozen for result phase result */
 
            output_scene_pluggingPhase(game_getConnectedPlugsPattern());
            
@@ -163,7 +165,7 @@ void loop() {
            break;
            
     case GST_SOCKET_TEST_MODE:
-           input_plugs_scan();
+           input_plug_scan_tick();
            output_scene_socket_test(input_getSocketNumberForPlug(0)) ; /* restricted to Plug 0 */
            break;
     
@@ -171,7 +173,6 @@ void loop() {
           output_sequence_error();
           #ifdef TRACE
              Serial.print("unhandled game state:");Serial.println(game_state);
-             delay(2000);
           #endif 
           game_state=GST_SELECT_PHASE;
           

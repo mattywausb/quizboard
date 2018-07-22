@@ -32,6 +32,8 @@ const byte input_socketPin[]={0,1,2,3};
 const byte input_levelForSocket[SOCKETS_PER_PIN]={240,124,83,21}; // socket level is analogRead>>2  (measured)
 const byte input_levelTolerance=15; // Level tolerance (after already divided by 4)
 
+byte input_currentSocketGroup=0;
+
 
 /* Button and encoder handling varaibles and constants */
 const unsigned int scan_register_check_mask=        B11111000<<8 | B00011111;
@@ -133,8 +135,20 @@ void input_setup(int encoderRangeMin, int encoderRangeMax) {
   input_encoder_rangeMin=encoderRangeMin;
   input_encoder_rangeMax=encoderRangeMax;
   input_encoder_value=encoderRangeMin;
+
+  /* Initialize the result matrix */
+  input_resetPlugResult();
       
 }
+
+void input_resetPlugResult() {  /* Must be called when starting scannin again
+  /* initialize result array */
+  for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
+            input_currentPlugSocket[plugIndex] = NOT_PLUGGED;
+  }
+  input_currentSocketGroupIndex=0;
+}
+
 
 /* ********************************************************************************************************** */
 /* the central scanning function to track the state changes of the buttons and switches                       */
@@ -255,23 +269,15 @@ void input_switches_chatchUp() {
 /* ********************************************************************************************************** */
 /* the central scanning function to determine the plugging state and store it in input_currentPlugSocket array*/
 
-void input_plugs_scan(){
+void input_plug_scan_tick(){
 
-  byte plugIndex;
   byte shiftOutPattern;
-  byte socketGroupIndex;
   byte socketPin;
   byte levelIndex;
   int socketPinReadout;
 
-  /* initialize result array */
-  for(plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
-            input_currentPlugSocket[plugIndex] = NOT_PLUGGED;
-  }
-
 
   
-  for(socketGroupIndex=0; socketGroupIndex<SOCKET_PIN_COUNT;socketGroupIndex++) { /* for evey socket pin */
      socketPin=input_socketPin[socketGroupIndex];
      #ifdef TRACE_PLUGS_SCAN
            Serial.print(socketPin);Serial.print(">");
@@ -288,9 +294,9 @@ void input_plugs_scan(){
           shiftOut(plug_bus_data_pin, plug_bus_clock_pin,MSBFIRST,shiftOutPattern); // TBD: Can be more efficent to just shift the bit we aleady placed
           digitalWrite(plug_bus_storage_pin,HIGH); 
           digitalWrite(plug_bus_storage_pin,LOW);           
-            input_switches_tick(false); /* keep our scan service happy */
-            delay(1); /* wait for high to establish*/
-            input_switches_tick(false); /* keep our scan service happy */
+            input_switches_tick(false); /* keep our button scan process happy */
+            delayMicroseconds(100); /* wait for high to establish*/
+            input_switches_tick(false); /* keep our button scan process happy */
 
           /* Read the value */
           socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
@@ -316,19 +322,22 @@ void input_plugs_scan(){
              } // level loop    
             input_switches_tick(false); /* keep our scan service happy */  
           #ifdef TRACE_PLUGS_SCAN
-
              Serial.print("\t=");Serial.print(input_currentPlugSocket[plugIndex]); Serial.print("  \t");
           #endif 
       }// plug pin loop
-} // socket pin loop
-   #ifdef TRACE_PLUGS_SCAN
-          Serial.println();
-   #endif
 
   // Pull all plugs to LOW
   shiftOut(plug_bus_data_pin, plug_bus_clock_pin,MSBFIRST,0); 
   digitalWrite(plug_bus_storage_pin,HIGH); 
   digitalWrite(plug_bus_storage_pin,LOW); 
+
+  //forward one socket
+  if(++input_currentSocketGroupIndex>=SOCKET_PIN_COUNT) {
+          input_currentSocketGroupIndex=0;
+          #ifdef TRACE_PLUGS_SCAN
+           Serial.println();
+          #endif  
+  }
    
 }
 
