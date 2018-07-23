@@ -1,63 +1,83 @@
-//#define TRACE_PER_SERIAL 1
+#define TRACE_PER_SERIAL 1
 
-// #define OUTPUT_TRACE 1
-//#define INPUT_TRACE 1
+//#define OUTPUT_TRACE 1
+#define INPUT_TRACE 1
 
-/* Interface configuration */
-
-const byte encoder_a_pin = 5;
-const byte encoder_b_pin = 4;
-const byte encoder_p_pin = 3;
-
+/* Output configuration */
 const byte led_bus_clock_pin = 12;
 const byte led_bus_storage_pin = 11;
 const byte led_bus_data_pin = 10;
 
-const unsigned long input_scan_interval = 500; //in milliseconds, never check state bevore this time is over, with 16 bit registers we have 8 ms latency+debounce until press is detected
-unsigned long input_last_scan_micros = 0;
 
-const unsigned int scan_register_check_mask=        B11111000<<8 | B00011111;
-const unsigned int scan_register_pressed_pattern=      0;
-const unsigned int scan_register_released_pattern=  B11111000<<8 | B00011111;
+/* Input configuration */
 
-unsigned int encoder_a_scan_register = 0;
-unsigned int encoder_b_scan_register = 0;
-unsigned int encoder_p_scan_register = 0;
+const byte switch_pin_list[]={5,    // ENCODER A
+                         4,    // ENCODER B
+                         3};   // ENCODER P
+                         
+#define INPUT_BITIDX_ENCODER_A 0
+#define INPUT_BITIDX_ENCODER_B 2
+#define INPUT_BITIDX_ENCODER_P 4
+/*                                         76543210 */
+#define INPUT_ENCODER_A_MASK              B00000011
+#define INPUT_ENCODER_A_PRESSED_PATTERN   B00000001
+#define INPUT_ENCODER_A_RELEASED_PATTERN  B00000010
 
-byte encoder_a_state_register = 0;
-byte encoder_b_state_register = 0;
-byte encoder_p_state_register = 0;
+#define INPUT_ENCODER_B_MASK              B00001100
+#define INPUT_ENCODER_B_PRESSED_PATTERN   B00000100
+#define INPUT_ENCODER_B_RELEASED_PATTERN  B00001000
 
-#define ENCODER_STATE_A_BIT 0
-#define ENCODER_STATE_B_BIT 1
-#define ENCODER_START_WITH_A_PATTERN B00000001
-#define ENCODER_START_WITH_B_PATTERN B00000010
+#define INPUT_ENCODER_AB_MASK             B00001111
+
+#define INPUT_ENCODER_P_MASK              B00110000
+#define INPUT_ENCODER_P_PRESSED_PATTERN   B00010000
+#define INPUT_ENCODER_P_RELEASED_PATTERN  B00100000
+
+const unsigned long input_debounce_cooldown_interval = 5000; //in milliseconds, never check individual state again bevor this time is over
+const unsigned long input_scan_interval = 200; //in milliseconds, never scan anything state bevore this time is over, 
+
+/* Variable for reducing cpu usage */
+unsigned long lastScanTs=0;
+
+/* Variables for debounce handling */
+
+#define INPUT_DEBOUNCED_CURRENT_STATE_MASK B01010101
+#define INPUT_DEBOUNCED_PREVIOUS_STATE_MASK B10101010
+
+byte raw_state_previous=0;
+byte debounced_state=0;  // can track up to 4 buttons (current at 6420 and previous at 7531) 
+unsigned long stateChangeTs[sizeof(switch_pin_list)];
+
+
+/* Variables for encoder tracking */
 #define ENCODER_IDLE_POSITION 0
+#define ENCODER_START_WITH_A_PATTERN B00000001
+#define ENCODER_START_WITH_B_PATTERN B00000100
 
-
-byte encoder_ab_state_pattern=0;
-
-#define ENCODER_FLAG_INITIAL_FOLLOWER_STATE 2
-
-byte encoder_transition_type=0;
+byte encoder_transition_state=0;
 
 int input_encoder_value=0;
 const int input_encoder_rangeMin=0;
 const int input_encoder_rangeMax=45;
 
 
-
-
-
-/* **********  Input functions ************** */ 
+/* **********  Input retrieval functions ************** */ 
 byte input_getEncoderButtonState()
 {
-  return encoder_p_state_register&B00000001;
+  return bitRead(debounced_state,INPUT_BITIDX_ENCODER_P);
+}
+
+byte input_getEncoderButtonEventPress(){
+  return (debounced_state&INPUT_ENCODER_P_MASK)==INPUT_ENCODER_P_PRESSED_PATTERN; 
+}
+
+byte input_getEncoderButtonEventRelease(){
+  return (debounced_state&INPUT_ENCODER_P_MASK)==INPUT_ENCODER_P_RELEASED_PATTERN; 
 }
 
 byte input_getEncoderABContactState()
 {
-  return encoder_ab_state_pattern;
+  return debounced_state&INPUT_ENCODER_AB_MASK&INPUT_DEBOUNCED_CURRENT_STATE_MASK;
 }
 
 byte input_getEncoderValue()
@@ -66,85 +86,76 @@ byte input_getEncoderValue()
 }
 
 void input_scan_tick() {
-  if (micros() - input_last_scan_micros < input_scan_interval) return;  /* return if it is to early */ 
-  input_last_scan_micros = micros();
+  byte switchIndex;
+  byte bitIndex;
+  byte rawRead;
+  /* copy last current debounced state to previous debounced state*/
+  debounced_state=(debounced_state&INPUT_DEBOUNCED_CURRENT_STATE_MASK)<<1|(debounced_state&INPUT_DEBOUNCED_CURRENT_STATE_MASK);
+  
+  if (micros() - lastScanTs < input_scan_interval) return;  /* return if it is to early to scan again */ 
+  lastScanTs = micros();
 
-  /* Push new input into scan history registers */
-  encoder_p_scan_register = encoder_p_scan_register << 1 | digitalRead(encoder_p_pin);
-  encoder_a_scan_register = encoder_a_scan_register << 1 | digitalRead(encoder_a_pin);
-  encoder_b_scan_register = encoder_b_scan_register << 1 | digitalRead(encoder_b_pin);
+  /* Collect raw state an transform it to debounced state */
+  for(switchIndex=0;switchIndex<sizeof(switch_pin_list);switchIndex++) {
+    bitIndex=switchIndex<<1;
+    rawRead=!digitalRead(switch_pin_list[switchIndex]); // Read and reverse bit due to INPUT_PULLUP configuration
 
-  /* determine debounced p button value */
-  if ((encoder_p_scan_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    encoder_p_state_register = 1 | encoder_p_state_register << 1; // Push debounced press state to state history
-  }
-
-  if ((encoder_p_scan_register & scan_register_check_mask )== scan_register_released_pattern) {
-    encoder_p_state_register = 0 | encoder_p_state_register << 1; // Push debounced release state to state history
-  }
-
-
- /* determine debounced a contact value */
-  if ((encoder_a_scan_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    bitSet(encoder_ab_state_pattern,ENCODER_STATE_A_BIT);
-    encoder_a_state_register = 1 | encoder_a_state_register << 1; // Push debounced press state to state history
-  }
-
-  if ((encoder_a_scan_register & scan_register_check_mask) == scan_register_released_pattern) {
-    bitClear(encoder_ab_state_pattern,ENCODER_STATE_A_BIT);
-    encoder_a_state_register = 0 | encoder_a_state_register << 1; // Push debounced release state to state history
-  }
-
-
- /* determine debounced b contact value */
-  if ((encoder_b_scan_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    bitSet(encoder_ab_state_pattern,ENCODER_STATE_B_BIT);
-    encoder_b_state_register = 1 | encoder_b_state_register << 1; // Push debounced press state to state history
-  }
-
-  if ((encoder_b_scan_register & scan_register_check_mask) == scan_register_released_pattern) {
-    bitClear(encoder_ab_state_pattern,ENCODER_STATE_B_BIT);
-    encoder_b_state_register = 0 | encoder_b_state_register << 1; // Push debounced release state to state history
-  }
-
-
-
+    
+    if(bitRead(raw_state_previous,bitIndex)!= rawRead) { // we have a flank
+      bitWrite(raw_state_previous,bitIndex,rawRead); // remember the new raw state
+      stateChangeTs[switchIndex]=micros(); // remember  our time
+    } else {  /* no change in raw state */
+      if(bitRead(debounced_state,bitIndex)!= rawRead && // but a change against debounced state
+         (micros()-stateChangeTs[switchIndex]>input_debounce_cooldown_interval))  // and raw is holding it long enough
+          bitWrite(debounced_state,bitIndex,rawRead); // Change our debounce state
+    }
+  }// For switch index
 
  
+
   /* Track encoder transitions transaction */
-    switch(encoder_transition_type) {
+ 
+    switch(encoder_transition_state) {
       case ENCODER_IDLE_POSITION:
-          if(encoder_ab_state_pattern==ENCODER_START_WITH_A_PATTERN ||
-             encoder_ab_state_pattern==ENCODER_START_WITH_B_PATTERN) {
-              encoder_transition_type=encoder_ab_state_pattern;
+          if((debounced_state&INPUT_ENCODER_AB_MASK) 
+               == ENCODER_START_WITH_A_PATTERN ||
+             ((debounced_state&INPUT_ENCODER_AB_MASK)
+              ==ENCODER_START_WITH_B_PATTERN)) {
+              encoder_transition_state=debounced_state&INPUT_ENCODER_AB_MASK;
+              #ifdef INPUT_TRACE
+                Serial.print("T");
+              #endif 
           };
           break;
     
       case ENCODER_START_WITH_A_PATTERN:
-            if(bitRead(encoder_ab_state_pattern,ENCODER_STATE_A_BIT)==0 &&
-               (encoder_b_state_register & B00000011) == B00000010){ // B Pin opened after A 
+            if(bitRead(debounced_state,INPUT_BITIDX_ENCODER_A)==0  // A is back open 
+               && ((debounced_state&INPUT_ENCODER_B_MASK) == INPUT_ENCODER_B_RELEASED_PATTERN)){ // B Pin just got opened
                if(--input_encoder_value<input_encoder_rangeMin) input_encoder_value=input_encoder_rangeMax; 
             };
             break;
       case ENCODER_START_WITH_B_PATTERN:
-            if(bitRead(encoder_ab_state_pattern,ENCODER_STATE_B_BIT)==0 &&
-               (encoder_a_state_register & B00000011) == B00000010){ // A Pin opened after B 
-                if(++input_encoder_value>input_encoder_rangeMax) input_encoder_value=input_encoder_rangeMin;
+            if(bitRead(debounced_state,INPUT_BITIDX_ENCODER_B)==0  // B is back open 
+               && ((debounced_state&INPUT_ENCODER_A_MASK) == INPUT_ENCODER_A_RELEASED_PATTERN)){ // A Pin just got opened
+                 if(++input_encoder_value>input_encoder_rangeMax) input_encoder_value=input_encoder_rangeMin;
             };
             break;
     };
             
-    /* Reset transition type, when all states are low */
-    if(encoder_ab_state_pattern==0) encoder_transition_type=0;
+    /* Reset transition state, when all debounced states of the encoder contacts are low */
+    if((debounced_state&
+       INPUT_ENCODER_AB_MASK&
+       INPUT_DEBOUNCED_CURRENT_STATE_MASK)==0) {
+       #ifdef INPUT_TRACE
+                if(encoder_transition_state) {Serial.print(input_encoder_value); Serial.println("<--Encoder idle");}
+              #endif 
+              encoder_transition_state=ENCODER_IDLE_POSITION;
+
+       }
 
 #ifdef INPUT_TRACE
-  if ((encoder_p_state_register & B00000011) == B00000001) Serial.println("Push P");
-  if ((encoder_p_state_register & B00000011) == B00000010) Serial.println("Release P");
-  
-  if (bitRead(encoder_a_state_register,0)!=bitRead(encoder_a_state_register,1) ||
-      bitRead(encoder_b_state_register,0)!=bitRead(encoder_b_state_register,1) ) { 
-      Serial.print("AB:");Serial.println(encoder_ab_state_pattern|B10000000,BIN);
-  }
+  if (input_getEncoderButtonEventPress()) Serial.println("Push P");
+  if (input_getEncoderButtonEventRelease()) Serial.println("Release P");
 #endif
 
 } /* END OF input_scan_tick() */
@@ -266,9 +277,11 @@ void setup() {
   pinMode(led_bus_storage_pin, OUTPUT);
   pinMode(led_bus_data_pin, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(encoder_a_pin, INPUT_PULLUP);
-  pinMode(encoder_b_pin, INPUT_PULLUP);
-  pinMode(encoder_p_pin, INPUT_PULLUP);
+
+  for(byte switchIndex=0;switchIndex<sizeof(switch_pin_list);switchIndex++) {
+       pinMode(switch_pin_list[switchIndex], INPUT_PULLUP);
+       stateChangeTs[switchIndex]=0;  // and initialize timer array
+  }
 
 
 
@@ -315,7 +328,7 @@ void loop() {
 
       /* Update display */
 
-      shiftOut(led_bus_data_pin, led_bus_clock_pin, MSBFIRST,encoder_a_state_register);
+      shiftOut(led_bus_data_pin, led_bus_clock_pin, MSBFIRST,debounced_state);
       shiftOut(led_bus_data_pin, led_bus_clock_pin, MSBFIRST, ~pattern);
       digitalWrite(led_bus_storage_pin, HIGH);
       digitalWrite(led_bus_storage_pin, LOW);
@@ -324,7 +337,7 @@ void loop() {
        /* End of RUNMODE_CYCLE */
             
     case RUNMODE_MONITOR: /* ********** RUN MODE MONITOR ************** */
-      pattern= input_getEncoderButtonState()<<7 |  input_getEncoderABContactState()<<5;
+      pattern= debounced_state;
       shiftOut(led_bus_data_pin, led_bus_clock_pin, MSBFIRST,pattern);
       shiftOut(led_bus_data_pin, led_bus_clock_pin, MSBFIRST, ~getledSegmentCharPattern(input_getEncoderValue()));
       digitalWrite(led_bus_storage_pin, HIGH);
@@ -336,9 +349,8 @@ void loop() {
 
   }//switch runmode
 
+//delay(500); // Debug slow down
 
-
-
-}
+} /* end of loop () */
 
 
