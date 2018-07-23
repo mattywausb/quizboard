@@ -6,100 +6,96 @@
 //#define TRACE_PLUGS_SCAN 1
 
 // Activate general trace output
-#define TRACE_INPUT 1
+//#define TRACE_INPUT 1
 
 /* Port constants */
-const byte input_select_button_pin= 3;
-const byte input_result_button_pin= 2;
-const byte encoder_a_pin = 5;
-const byte encoder_b_pin = 4;
-
 
 const byte plug_bus_clock_pin=9;
 const byte plug_bus_storage_pin=8;
 const byte plug_bus_data_pin=7;
 
 
-const unsigned long input_scan_interval = 500; //in milliseconds, never check state before this time is over, with 16 bit registers we have 8 ms latency+debounce until change is detected
-const unsigned long input_scan_tick_max_age = 40*input_scan_interval; //this will trigger a catchup in the tick function
-unsigned long input_last_scan_micros = 0;
+const byte switch_pin_list[]={5,    // ENCODER A
+                              4,    // ENCODER B
+                              3,    // SELECT ( ENCODER PUSH)
+                               2     // Result 
+                              };   
+                         
+#define INPUT_BITIDX_ENCODER_A 0
+#define INPUT_BITIDX_ENCODER_B 2
+#define INPUT_BITIDX_SELECT 4
+#define INPUT_BITIDX_RESULT 6
+/*                                         76543210 */
+#define INPUT_ENCODER_A_MASK              B00000011
+#define INPUT_ENCODER_A_PRESSED_PATTERN   B00000001
+#define INPUT_ENCODER_A_RELEASED_PATTERN  B00000010
 
-/* Plug Port variables and constants */
+#define INPUT_ENCODER_B_MASK              B00001100
+#define INPUT_ENCODER_B_PRESSED_PATTERN   B00000100
+#define INPUT_ENCODER_B_RELEASED_PATTERN  B00001000
 
-byte input_currentPlugSocket[PLUGCOUNT];  /* Stores the last measured socket every plug was connectef to */
-const byte input_socketPin[]={0,1,2,3};
-#define SOCKETS_PER_PIN 4
-const byte input_levelForSocket[SOCKETS_PER_PIN]={240,124,83,21}; // socket level is analogRead>>2  (measured)
-const byte input_levelTolerance=15; // Level tolerance (after already divided by 4)
+#define INPUT_ENCODER_AB_MASK             B00001111
 
-byte input_currentSocketGroup=0;
+#define INPUT_SELECT_MASK              B00110000
+#define INPUT_SELECT_PRESSED_PATTERN   B00010000
+#define INPUT_SELECT_RELEASED_PATTERN  B00100000
+
+#define INPUT_RESULT_MASK              B11000000
+#define INPUT_RESULT_PRESSED_PATTERN   B01000000
+#define INPUT_RESULT_RELEASED_PATTERN  B10000000
+
+const unsigned long input_debounce_cooldown_interval = 5000; //in microseconds, never check individual state again bevor this time is over
+const unsigned long input_scan_interval = 200; //in microseconds, never scan anything state bevore this time is over, 
+
+/* Variable for reducing cpu usage */
+unsigned long lastScanTs=0;
+
+/* Variables for debounce handling */
+
+#define INPUT_DEBOUNCED_CURRENT_STATE_MASK B01010101
+#define INPUT_DEBOUNCED_PREVIOUS_STATE_MASK B10101010
+
+byte raw_state_previous=0;
+byte debounced_state=0;  // can track up to 4 buttons (current at 6420 and previous at 7531) 
+unsigned long stateChangeTs[sizeof(switch_pin_list)];
 
 
-/* Button and encoder handling varaibles and constants */
-const unsigned int scan_register_check_mask=        B11111000<<8 | B00011111;
-const unsigned int scan_register_pressed_pattern=      0;
-const unsigned int scan_register_released_pattern=  B11111000<<8 | B00011111;
-
-unsigned int encoder_a_scan_register = 0;
-unsigned int encoder_b_scan_register = 0;
-unsigned int input_select_button_register = 0;
-unsigned int input_result_button_register = 0;
-
-byte encoder_a_state_register = 0;
-byte encoder_b_state_register = 0;
-byte encoder_ab_state_pattern=0;
-
-byte input_button_flags = 0;
-/*                               76543210 */
-#define BUTTON_FLAG_TICK_RESET  B00001111
-#define BUTTON_FLAG_RESULT_STATE_BIT 0
-#define BUTTON_FLAG_RESULT_GOT_PRESSED_BIT 4
-#define BUTTON_FLAG_RESULT_GOT_RELEASED_BIT 5
-#define BUTTON_FLAG_SELECT_STATE_BIT 1
-#define BUTTON_FLAG_SELECT_GOT_PRESSED_BIT 6
-#define BUTTON_FLAG_SELECT_GOT_RELEASED_BIT 7
-
-byte encoder_transition_type=0;
-#define ENCODER_STATE_A_BIT 0
-#define ENCODER_STATE_B_BIT 1
-#define ENCODER_START_WITH_A_PATTERN B00000001
-#define ENCODER_START_WITH_B_PATTERN B00000010
+/* Variables for encoder tracking */
 #define ENCODER_IDLE_POSITION 0
+#define ENCODER_START_WITH_A_PATTERN B00000001
+#define ENCODER_START_WITH_B_PATTERN B00000100
+
+byte encoder_transition_state=0;
 
 int input_encoder_value=0;
 int input_encoder_rangeMin=0;
 int input_encoder_rangeMax=45;
 
-/* Button state constants and variables */
 
-/*  Deprecated
-#define PUSHED false
-#define NOT_PUSHED true
+/* Plug Port variables and constants */
 
-byte input_select_button_state = NOT_PUSHED;  
-byte input_result_button_state = NOT_PUSHED;  
-byte input_select_got_pressed =false;
-byte input_result_got_pressed =false;
-byte input_poti_value=0;
+byte input_targetIndexResult[PLUGCOUNT];  /* Stores the official target index for the source */
+byte input_targetIndexRaw[PLUGCOUNT];  /* keeps the raw target index while collecting scan is running */
+const byte input_socketPin[]={0,1,2,3};
+#define SOCKETS_PER_PIN 4
+const byte input_levelForSocket[SOCKETS_PER_PIN]={240,124,83,21}; // socket level is analogRead>>2  (measured)
+const byte input_levelTolerance=15; // Level tolerance (after already divided by 4)
 
-unsigned long input_cooldown_time=0;
-const unsigned long button_cooldown_interval=100000; //in microseconds, when we get a press signal, we dont accept button input inside this interval
-*/
-
+byte input_scanSocketIndex=0;
 
 /* ********************************************************************************************************** */
 /*               retrieval functions                                                                          */
 
 byte input_selectGotPressed() {
-  return bitRead(input_button_flags,BUTTON_FLAG_SELECT_GOT_PRESSED_BIT) ; /* We switched from unpressed to pressed */;
+ return (debounced_state&INPUT_SELECT_MASK)==INPUT_SELECT_PRESSED_PATTERN; ; /* We switched from unpressed to pressed */;
 }
 
 byte input_resultGotPressed() {
- return bitRead(input_button_flags,BUTTON_FLAG_RESULT_GOT_PRESSED_BIT)  ; /* We switched from unpressed to pressed */
+ return (debounced_state&INPUT_RESULT_MASK)==INPUT_RESULT_PRESSED_PATTERN; ; /* We switched from unpressed to pressed */;
 }
 
 byte input_getResultButtonIsPressed() {
-  return bitRead(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT) ;
+  return bitRead(debounced_state,INPUT_BITIDX_RESULT) ;
 }
 
 byte input_getEncoderValue(){
@@ -107,7 +103,7 @@ byte input_getEncoderValue(){
 }
 
 byte input_getSocketNumberForPlug(byte plugIndex) {  
-  return input_currentPlugSocket[plugIndex];
+  return input_targetIndexResult[plugIndex];
 }
 
 
@@ -116,11 +112,12 @@ byte input_getSocketNumberForPlug(byte plugIndex) {
 
 
 void input_setup(int encoderRangeMin, int encoderRangeMax) {
-  pinMode(input_select_button_pin,INPUT_PULLUP);  
-  pinMode(input_result_button_pin,INPUT_PULLUP);  
-  pinMode(encoder_a_pin, INPUT_PULLUP);
-  pinMode(encoder_b_pin, INPUT_PULLUP);
-    
+  /* Switch pins and debounce timer array */
+  for(byte switchIndex=0;switchIndex<sizeof(switch_pin_list);switchIndex++) {
+       pinMode(switch_pin_list[switchIndex], INPUT_PULLUP);
+       stateChangeTs[switchIndex]=0;  // and initialize timer array
+  }
+  
   pinMode(plug_bus_clock_pin,OUTPUT);
   pinMode(plug_bus_storage_pin,OUTPUT);
   pinMode(plug_bus_data_pin,OUTPUT);
@@ -137,137 +134,94 @@ void input_setup(int encoderRangeMin, int encoderRangeMax) {
   input_encoder_value=encoderRangeMin;
 
   /* Initialize the result matrix */
-  input_resetPlugResult();
+ input_plug_resetResult();
       
 }
 
-void input_resetPlugResult() {  /* Must be called when starting scannin again
-  /* initialize result array */
-  for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
-            input_currentPlugSocket[plugIndex] = NOT_PLUGGED;
-  }
-  input_currentSocketGroupIndex=0;
-}
+
 
 
 /* ********************************************************************************************************** */
 /* the central scanning function to track the state changes of the buttons and switches                       */
 
-void input_switches_tick(bool resetEvents) {
-  if(resetEvents) input_button_flags &=BUTTON_FLAG_TICK_RESET;  /* Remove all "one tick" events from flag memory */
+void input_switches_scan_tick() {  /* After every tick, especially the flank events must be checked, because they will be lost in the next tick */
+  byte switchIndex;
+  byte bitIndex;
+  byte rawRead;
   
-  if (micros() - input_last_scan_micros < input_scan_interval) return;  /* return if it is to early */ 
-  if(micros() - input_last_scan_micros >input_scan_tick_max_age)  input_switches_chatchUp();
-  digitalWrite(LED_BUILTIN,HIGH);
-  input_last_scan_micros = micros();
+  /* copy remembered debounced state to previous debounced state*/
+  debounced_state=(debounced_state&INPUT_DEBOUNCED_CURRENT_STATE_MASK)<<1
+                 |(debounced_state&INPUT_DEBOUNCED_CURRENT_STATE_MASK);
+  
+  if (micros() - lastScanTs < input_scan_interval) return;  /* return if it is to early to scan again */ 
+  lastScanTs = micros();
 
-  /* Push new input into scan history registers */
-  input_result_button_register = input_result_button_register << 1 | digitalRead(input_result_button_pin);
-  input_select_button_register = input_select_button_register << 1 | digitalRead(input_select_button_pin);
-  encoder_a_scan_register = encoder_a_scan_register << 1 | digitalRead(encoder_a_pin);
-  encoder_b_scan_register = encoder_b_scan_register << 1 | digitalRead(encoder_b_pin);
+  /* Collect raw state an transform it to debounced state */
+  for(switchIndex=0;switchIndex<sizeof(switch_pin_list);switchIndex++) {
+    bitIndex=switchIndex<<1;
+    rawRead=!digitalRead(switch_pin_list[switchIndex]); // Read and reverse bit due to INPUT_PULLUP configuration
 
-  /* determine result_button button value */
-  if ((input_result_button_register & scan_register_check_mask) == scan_register_pressed_pattern) { /* debounced press */
-    if(!bitRead(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT)) { /* had not been pressed previous time */
-        bitSet(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT);
-        bitSet(input_button_flags,BUTTON_FLAG_RESULT_GOT_PRESSED_BIT);
+    
+    if(bitRead(raw_state_previous,bitIndex)!= rawRead) { // we have a flank
+      bitWrite(raw_state_previous,bitIndex,rawRead); // remember the new raw state
+      stateChangeTs[switchIndex]=micros(); // remember  our time
+    } else {  /* no change in raw state */
+      if(bitRead(debounced_state,bitIndex)!= rawRead && // but a change against debounced state
+         (micros()-stateChangeTs[switchIndex]>input_debounce_cooldown_interval))  // and raw is holding it long enough
+          bitWrite(debounced_state,bitIndex,rawRead); // Change our debounce state
     }
-  }
-  if ((input_result_button_register & scan_register_check_mask )== scan_register_released_pattern) { /* debounced release */
-    if(bitRead(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT)) { /* had  been pressed previous time */
-        bitClear(input_button_flags,BUTTON_FLAG_RESULT_STATE_BIT);
-        bitSet(input_button_flags,BUTTON_FLAG_RESULT_GOT_RELEASED_BIT);
-    }
-  }
+  }// For switch index
 
-  /* determine select_button button value */
-  if ((input_select_button_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    if(!bitRead(input_button_flags,BUTTON_FLAG_SELECT_STATE_BIT)) { /* had not been pressed previous time */
-        bitSet(input_button_flags,BUTTON_FLAG_SELECT_STATE_BIT);
-        bitSet(input_button_flags,BUTTON_FLAG_SELECT_GOT_PRESSED_BIT);
-    } 
-  }
-  if ((input_select_button_register & scan_register_check_mask )== scan_register_released_pattern) {
-    if(bitRead(input_button_flags,BUTTON_FLAG_SELECT_STATE_BIT)) { /* had  been pressed previous time */
-        bitClear(input_button_flags,BUTTON_FLAG_SELECT_STATE_BIT);
-        bitSet(input_button_flags,BUTTON_FLAG_SELECT_GOT_RELEASED_BIT);
-    }
-  }
-
-
- /* determine debounced a contact value */
-  if ((encoder_a_scan_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    bitSet(encoder_ab_state_pattern,ENCODER_STATE_A_BIT);
-    encoder_a_state_register = 1 | encoder_a_state_register << 1; // Push debounced press state to state history
-  }
-  if ((encoder_a_scan_register & scan_register_check_mask) == scan_register_released_pattern) {
-    bitClear(encoder_ab_state_pattern,ENCODER_STATE_A_BIT);
-    encoder_a_state_register = 0 | encoder_a_state_register << 1; // Push debounced release state to state history
-  }
-
-
- /* determine debounced b contact value */
-  if ((encoder_b_scan_register & scan_register_check_mask) == scan_register_pressed_pattern) {
-    bitSet(encoder_ab_state_pattern,ENCODER_STATE_B_BIT);
-    encoder_b_state_register = 1 | encoder_b_state_register << 1; // Push debounced press state to state history
-  }
-  if ((encoder_b_scan_register & scan_register_check_mask) == scan_register_released_pattern) {
-    bitClear(encoder_ab_state_pattern,ENCODER_STATE_B_BIT);
-    encoder_b_state_register = 0 | encoder_b_state_register << 1; // Push debounced release state to state history
-  }
 
   /* Track encoder transitions transaction */
-    switch(encoder_transition_type) {
+ 
+    switch(encoder_transition_state) {
       case ENCODER_IDLE_POSITION:
-          if(encoder_ab_state_pattern==ENCODER_START_WITH_A_PATTERN ||
-             encoder_ab_state_pattern==ENCODER_START_WITH_B_PATTERN) {
-              encoder_transition_type=encoder_ab_state_pattern;
+          if((debounced_state&INPUT_ENCODER_AB_MASK) 
+               == ENCODER_START_WITH_A_PATTERN ||
+             ((debounced_state&INPUT_ENCODER_AB_MASK)
+              ==ENCODER_START_WITH_B_PATTERN)) {
+              encoder_transition_state=debounced_state&INPUT_ENCODER_AB_MASK;
+              #ifdef INPUT_TRACE
+                Serial.print("T");
+              #endif 
           };
           break;
     
       case ENCODER_START_WITH_A_PATTERN:
-            if(bitRead(encoder_ab_state_pattern,ENCODER_STATE_A_BIT)==0 &&
-               (encoder_b_state_register & B00000011) == B00000010){ // B Pin opened after A 
+            if(bitRead(debounced_state,INPUT_BITIDX_ENCODER_A)==0  // A is back open 
+               && ((debounced_state&INPUT_ENCODER_B_MASK) == INPUT_ENCODER_B_RELEASED_PATTERN)){ // B Pin just got opened
                if(--input_encoder_value<input_encoder_rangeMin) input_encoder_value=input_encoder_rangeMax; 
             };
             break;
       case ENCODER_START_WITH_B_PATTERN:
-            if(bitRead(encoder_ab_state_pattern,ENCODER_STATE_B_BIT)==0 &&
-               (encoder_a_state_register & B00000011) == B00000010){ // A Pin opened after B 
-                if(++input_encoder_value>input_encoder_rangeMax) input_encoder_value=input_encoder_rangeMin;
+            if(bitRead(debounced_state,INPUT_BITIDX_ENCODER_B)==0  // B is back open 
+               && ((debounced_state&INPUT_ENCODER_A_MASK) == INPUT_ENCODER_A_RELEASED_PATTERN)){ // A Pin just got opened
+                 if(++input_encoder_value>input_encoder_rangeMax) input_encoder_value=input_encoder_rangeMin;
             };
             break;
     };
             
-    /* Reset transition type, when all states are low */
-    if(encoder_ab_state_pattern==0) encoder_transition_type=0;
+    /* Reset encoder  transition state, when all debounced 
+       states of the encoder contacts are low */
+    if((debounced_state&
+       INPUT_ENCODER_AB_MASK&
+       INPUT_DEBOUNCED_CURRENT_STATE_MASK)==0) {
+       #ifdef INPUT_TRACE
+                if(encoder_transition_state) {Serial.print(input_encoder_value); Serial.println("<--Encoder idle");}
+              #endif 
+              encoder_transition_state=ENCODER_IDLE_POSITION;
 
-    #ifdef TRACE_INPUT
-      if (bitRead(input_button_flags,BUTTON_FLAG_SELECT_GOT_PRESSED_BIT)) Serial.println("# Select");
-      if (bitRead(input_button_flags,BUTTON_FLAG_SELECT_GOT_RELEASED_BIT)) Serial.println("o Select");
-      if (bitRead(input_button_flags,BUTTON_FLAG_RESULT_GOT_PRESSED_BIT)) Serial.println("# Result");
-      if (bitRead(input_button_flags,BUTTON_FLAG_RESULT_GOT_RELEASED_BIT)) Serial.println("o Result");
-   #endif
-    digitalWrite(LED_BUILTIN,LOW);
+       }
+
+  
 } // void input_switches_tick()
 
 
-/* ensure we have actual data in the registers(will be called, when tick was not called for a long time)*/
-void input_switches_chatchUp() {
-  input_last_scan_micros = micros(); // close gap, so we dont get a recursive trap
-  #ifdef TRACE_INPUT
-    Serial.print("+T+");
-  #endif
-  /* Scan input until registers are refreshed completely */
-  for(byte catchUpCycles=0;catchUpCycles<sizeof(encoder_a_scan_register)*8;catchUpCycles++) { 
-     input_switches_tick(true);
-     delayMicroseconds( input_scan_interval);
-  }
-}
+
 
 /* ********************************************************************************************************** */
-/* the central scanning function to determine the plugging state and store it in input_currentPlugSocket array*/
+/* the central scanning function to determine the plugging state and store it in input_targetIndexRaw array*/
 
 void input_plug_scan_tick(){
 
@@ -277,8 +231,10 @@ void input_plug_scan_tick(){
   int socketPinReadout;
 
 
+     
+     digitalWrite(LED_BUILTIN,HIGH);
   
-     socketPin=input_socketPin[socketGroupIndex];
+     socketPin=input_socketPin[input_scanSocketIndex];
      #ifdef TRACE_PLUGS_SCAN
            Serial.print(socketPin);Serial.print(">");
      #endif  
@@ -286,7 +242,7 @@ void input_plug_scan_tick(){
      /* do a blind read to initialize AD input for that socket group*/
      analogRead(socketPin);  
      
-      for(plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
+      for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
 
         /* activate the plug, will pull down the others automatically */
           shiftOutPattern=0;
@@ -294,9 +250,7 @@ void input_plug_scan_tick(){
           shiftOut(plug_bus_data_pin, plug_bus_clock_pin,MSBFIRST,shiftOutPattern); // TBD: Can be more efficent to just shift the bit we aleady placed
           digitalWrite(plug_bus_storage_pin,HIGH); 
           digitalWrite(plug_bus_storage_pin,LOW);           
-            input_switches_tick(false); /* keep our button scan process happy */
-            delayMicroseconds(100); /* wait for high to establish*/
-            input_switches_tick(false); /* keep our button scan process happy */
+          delayMicroseconds(1000); /* wait for high to establish*/
 
           /* Read the value */
           socketPinReadout=analogRead(socketPin)>>2;  // shift 2 to fit in byte
@@ -306,23 +260,22 @@ void input_plug_scan_tick(){
 
           /* Compare to the expected levels for every socket in the group */
           for(levelIndex=0;levelIndex<SOCKETS_PER_PIN && 
-                           input_currentPlugSocket[plugIndex]==NOT_PLUGGED  // skip this if plug has already been found 
+                           input_targetIndexRaw[plugIndex]==NOT_PLUGGED  // skip this if plug has already been found 
                            ;levelIndex++) {  /* check level */
            #ifdef TRACE_PLUGS_SCAN
               Serial.print(".");
            #endif              
            if(socketPinReadout<=input_levelForSocket[levelIndex]+input_levelTolerance &&
                     socketPinReadout>=input_levelForSocket[levelIndex]-input_levelTolerance) {  /* we found our plug */
-                    input_currentPlugSocket[plugIndex] =(socketGroupIndex*SOCKETS_PER_PIN)+levelIndex;  /* Determine socket number */
+                    input_targetIndexRaw[plugIndex] =(input_scanSocketIndex*SOCKETS_PER_PIN)+levelIndex;  /* Determine socket number */
                     #ifdef TRACE_PLUGS_SCAN
                       Serial.print("x");
                      #endif  
                       break;
                   }
              } // level loop    
-            input_switches_tick(false); /* keep our scan service happy */  
           #ifdef TRACE_PLUGS_SCAN
-             Serial.print("\t=");Serial.print(input_currentPlugSocket[plugIndex]); Serial.print("  \t");
+             Serial.print("\t=");Serial.print(input_targetIndexRaw[plugIndex]); Serial.print("  \t");
           #endif 
       }// plug pin loop
 
@@ -332,12 +285,26 @@ void input_plug_scan_tick(){
   digitalWrite(plug_bus_storage_pin,LOW); 
 
   //forward one socket
-  if(++input_currentSocketGroupIndex>=SOCKET_PIN_COUNT) {
-          input_currentSocketGroupIndex=0;
-          #ifdef TRACE_PLUGS_SCAN
+  if(++input_scanSocketIndex>=SOCKET_PIN_COUNT) { /* one scan complete, copy result */
+    input_scanSocketIndex=0;
+    for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
+      input_targetIndexResult[plugIndex] = input_targetIndexRaw[plugIndex];
+      input_targetIndexRaw[plugIndex] = NOT_PLUGGED;         
+      }         
+    #ifdef TRACE_PLUGS_SCAN
            Serial.println();
-          #endif  
+    #endif  
   }
-   
+
+  digitalWrite(LED_BUILTIN,LOW);
+}
+
+
+void input_plug_resetResult() {  /* Must be called twice when starting scannin again */
+  for(byte plugIndex=0;plugIndex<PLUGCOUNT;plugIndex++) { /* for every plug */
+            input_targetIndexRaw[plugIndex] = NOT_PLUGGED;
+            input_targetIndexResult[plugIndex] = NOT_PLUGGED;
+  }
+  input_scanSocketIndex=0;
 }
 

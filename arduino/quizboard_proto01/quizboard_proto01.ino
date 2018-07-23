@@ -92,7 +92,7 @@ void setup() {
   Serial.begin(9600);
   
    output_setup();
-   input_setup(0,LEVEL_COUNT-1);
+   input_setup(0,game_program_count-1);
   
   Serial.println("This is quizboard proto 01.1");
 
@@ -108,7 +108,7 @@ void setup() {
 void loop() {
 
  /* Let imput module handle switch input */
-  input_switches_tick(true);
+  input_switches_scan_tick();
 
  /* Always switch to select phase, when select is pressed and not already in select state */
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
@@ -128,13 +128,13 @@ void loop() {
               if(game_selected_program>=game_test_program_count) { /* game level selected, and we start */
                   game_state=GST_PLUG_PHASE;
                   output_sequence_startGame(game_getCharIndexForProgram());
-                  input_resetPlugResult();
+                  input_plug_resetResult();
               } else {
                 game_state=game_selected_program; /* program number represent next game state */
                 switch(game_state) {
                   case GST_SOCKET_TEST_MODE:
                           output_sequence_socket_test();
-                          input_resetPlugResult();
+                          input_plug_resetResult();
                           break;
                 }
               }
