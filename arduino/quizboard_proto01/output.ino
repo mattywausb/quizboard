@@ -2,8 +2,11 @@
 
 // #define OUTPUT_TRACE 1
 
-#define SPACE_CHAR_INDEX 40
+#define CHAR_INDEX_BLANK 43
+#define CHAR_INDEX_DOT 41
+#define CHAR_INDEX_QUESTIONMARK 42
 #define ALL_OFF_7SEG_PATTERN 255
+#define ALL_ON_7SEG_PATTERN 0
 
 const byte led_bus_clock_pin=12;
 const byte led_bus_storage_pin=11;
@@ -20,13 +23,13 @@ const unsigned int game_result_blink_interval=350; //ms
 const unsigned int game_select_blink_interval=150; //ms
 const unsigned int game_attention_blink_interval=50; //ms
 
-const unsigned int game_start_frame_delay=700; //ms
+const unsigned int game_start_frame_delay=400; //ms
 
 //unsigned long output_nextRefreshTime=0;
 //const unsigned long led_animationInterval=40; //25fps
 
 byte output_led_pattern=ALL_OFF_7SEG_PATTERN;
-byte output_7seg_charIndexMemory=SPACE_CHAR_INDEX;
+byte output_7seg_charIndexMemory=CHAR_INDEX_BLANK;
 byte output_7seg_charPattern=0;
 
 void output_setup()
@@ -57,7 +60,7 @@ void output_setup()
 /* *********************** */
 /*     game select         */
 /* *********************** */
-void output_sequence_startGameSelect(byte programCharIndex) {
+void output_sequence_gameSelectStart(byte programCharIndex) {
   byte pattern=B00000000;
   output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
   output_led_pattern=0;
@@ -141,13 +144,31 @@ void output_scene_pluggingPhase(byte connectionPattern) {
 /* *********************** */
 /*      result phase       */
 /* *********************** */
-void output_sequence_presentResult(byte resultPattern){ /*### tbd add some animation here */
+void output_sequence_resultPhaseStart(byte resultPattern){ 
+  byte overlayMask=B11111111;
+  byte checkBit=B00000001;
+  
+  for( checkBit=B00000001,overlayMask=B11111111;checkBit>B00000000;checkBit<<=1,overlayMask<<=1) {
+   
+      for(byte repeat=0;repeat<6;repeat++) {
+        if(repeat>>1) output_7seg_charPattern=~getledSegmentCharPattern(CHAR_INDEX_QUESTIONMARK) ;
+        else output_7seg_charPattern=~getledSegmentCharPattern(CHAR_INDEX_BLANK);  
+        output_led_setPattern((resultPattern|overlayMask));
+        delay(30);
+        output_led_setPattern((resultPattern|overlayMask)^checkBit);
+        delay(30);
+      } // for repeat
+      
+   } // for checkBit
+
+   /* final picture that is handed to the scene */
+   output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
    output_led_setPattern(resultPattern); 
-  /* #TBD: add blinking of dot here*/
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
 }
 
+/*  --------- scene ----------*/
 void output_scene_resultPhase(byte resultPattern) {
     if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
          #ifdef OUTPUT_TRACE
@@ -245,8 +266,8 @@ void output_led_setPattern(byte pattern) {  /* for convinence, can be ommited by
   output_push_data_to_led_bus();
 }
 
-void output_7seg_setCharacter(byte index) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
-  output_7seg_charIndexMemory=index;
+void output_7seg_setCharacter(byte charIndex) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
+  output_7seg_charIndexMemory=charIndex;
   output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
   output_push_data_to_led_bus();
 }
@@ -299,32 +320,35 @@ case 16:return 0x5B; // H (bcefg)
 case 17:return 0xD2; // J (bcde)
 case 18:return 0x91; // L (def)
 case 19:return 0x1F; // P (abefg)
-case 20:return 0xD3; // U (bcdef)
-case 21:return 0x0F; //  (abfg)
-case 22:return 0x0E; //  (abg)
-case 23:return 0x0B; //  (bfg)
-case 24:return 0x0D; //  (afg)
-case 25:return 0x07; //  (abf)
-case 26:return 0x06; //  (ab)
-case 27:return 0xC0; //  (cd)
-case 28:return 0x90; //  (de)
-case 29:return 0x05; //  (af)
-case 30:return 0x44; //  (ac)
-case 31:return 0x84; //  (ad)
-case 32:return 0x14; //  (ae)
-case 33:return 0x01; //  (f)
-case 34:return 0x04; //  (a)
-case 35:return 0x02; //  (b)
-case 36:return 0x40; //  (c)
-case 37:return 0x80; // _ (d)
-case 38:return 0x10; //  (e)
-case 39:return 0x08; // - (g)
-case 40:return 0x00; // <spc> ()
-case 41:return 0x19; // TL (efg)
-case 42:return 0x4A; // TR (bcg)
-case 43:return 0x54; // X1 (ace)
-case 44:return 0x83; // X2 (bdf)
-default:return 0x20; //  (p)
+case 20:return 0x4F; // q (abcfg)
+case 21:return 0xD3; // U (bcdef)
+case 22:return 0x0F; //  (abfg)
+case 23:return 0x0E; //  (abg)
+case 24:return 0x0B; //  (bfg)
+case 25:return 0x0D; //  (afg)
+case 26:return 0x07; //  (abf)
+case 27:return 0x06; //  (ab)
+case 28:return 0xC0; //  (cd)
+case 29:return 0x90; //  (de)
+case 30:return 0x05; //  (af)
+case 31:return 0x44; //  (ac)
+case 32:return 0x84; //  (ad)
+case 33:return 0x14; //  (ae)
+case 34:return 0x01; //  (f)
+case 35:return 0x04; //  (a)
+case 36:return 0x02; //  (b)
+case 37:return 0x40; //  (c)
+case 38:return 0x80; // _ (d)
+case 39:return 0x10; //  (e)
+case 40:return 0x08; // - (g)
+case 41:return 0x20; // . (p)
+case 42:return 0x1E; // ? (abeg)
+case 43:return 0x00; // <spc> ()
+case 44:return 0x19; // TL (efg)
+case 45:return 0x4A; // TR (bcg)
+case 46:return 0x54; // X1 (ace)
+case 47:return 0x83; // X2 (bdf)
+default:return 0x3E; // ?. (abegp)
 } // end switch
 };
 

@@ -84,7 +84,7 @@ const byte input_levelTolerance=15; // Level tolerance (after already divided by
 byte input_scanSocketIndex=0;
 
 /* ********************************************************************************************************** */
-/*               retrieval functions                                                                          */
+/*               Interface functions                                                                          */
 
 byte input_selectGotPressed() {
  return (debounced_state&INPUT_SELECT_MASK)==INPUT_SELECT_PRESSED_PATTERN; ; /* We switched from unpressed to pressed */;
@@ -106,6 +106,11 @@ byte input_getSocketNumberForPlug(byte plugIndex) {
   return input_targetIndexResult[plugIndex];
 }
 
+void input_setEncoderValue(int newValue) {
+  input_encoder_value=newValue;
+  if(input_encoder_value<input_encoder_rangeMin) input_encoder_value=input_encoder_rangeMin;
+  if(input_encoder_value>input_encoder_rangeMax) input_encoder_value=input_encoder_rangeMax;
+}
 
 /* ********************************************************************************************************** */
 /*               S E T U P                                                                                    */

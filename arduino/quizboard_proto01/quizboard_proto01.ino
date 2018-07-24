@@ -55,7 +55,7 @@ byte game_state=GST_SELECT_PHASE;
 
 byte game_getCharIndexForProgram() {
   if(game_selected_program>=game_test_program_count) return game_selected_program-game_test_program_count;
-  else return game_selected_program+41 /* 41 is first special test char */;
+  else return game_selected_program+44 /* 43 is first special test char */;
 }
 
 byte game_getConnectedPlugsPattern() {  /* assemble byte pattern, representing connected plugs */
@@ -100,7 +100,7 @@ void setup() {
    delay(1000);
    output_led_setPattern(0);
    Serial.println("----- running now ---->");
-   output_sequence_startGameSelect(game_getCharIndexForProgram());
+   output_sequence_gameSelectStart(game_getCharIndexForProgram());
 
 }
 
@@ -113,7 +113,7 @@ void loop() {
  /* Always switch to select phase, when select is pressed and not already in select state */
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
             game_state=GST_SELECT_PHASE;
-            output_sequence_startGameSelect(game_getCharIndexForProgram());
+            output_sequence_gameSelectStart(game_getCharIndexForProgram());
             return; /* Bail out here, since we dont want the keypress to trigger more */
  }
  
@@ -150,7 +150,7 @@ void loop() {
            
            if(input_resultGotPressed()) {
               game_state=GST_RESULT_PHASE;
-              output_sequence_presentResult(game_getCorrectPlugsPattern());
+              output_sequence_resultPhaseStart(game_getCorrectPlugsPattern());
            }
            
            break; // ** end of GST_PLUG_PHASE
