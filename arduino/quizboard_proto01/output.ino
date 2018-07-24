@@ -5,8 +5,8 @@
 #define CHAR_INDEX_BLANK 43
 #define CHAR_INDEX_DOT 41
 #define CHAR_INDEX_QUESTIONMARK 42
-#define ALL_OFF_7SEG_PATTERN 255
-#define ALL_ON_7SEG_PATTERN 0
+#define ALL_OFF_7SEG_PATTERN 0
+#define ALL_ON_7SEG_PATTERN 255
 
 const byte led_bus_clock_pin=12;
 const byte led_bus_storage_pin=11;
@@ -22,6 +22,7 @@ int output_currentFrameNumber=0;
 const unsigned int game_result_blink_interval=350; //ms
 const unsigned int game_select_blink_interval=150; //ms
 const unsigned int game_attention_blink_interval=50; //ms
+const unsigned int game_plugphase_blink_interval=800; //ms
 
 const unsigned int game_start_frame_delay=400; //ms
 
@@ -31,6 +32,7 @@ const unsigned int game_start_frame_delay=400; //ms
 byte output_led_pattern=ALL_OFF_7SEG_PATTERN;
 byte output_7seg_charIndexMemory=CHAR_INDEX_BLANK;
 byte output_7seg_charPattern=0;
+byte output_7seg_dotMask=0;
 
 void output_setup()
 {
@@ -63,6 +65,7 @@ void output_setup()
 void output_sequence_gameSelectStart(byte programCharIndex) {
   byte pattern=B00000000;
   output_7seg_charPattern=ALL_OFF_7SEG_PATTERN;
+  output_7seg_setDot(true);
   output_led_pattern=0;
   output_push_data_to_led_bus();
   
@@ -89,13 +92,13 @@ void output_sequence_gameSelectStart(byte programCharIndex) {
           Serial.println("---> End of output_sequence_startGameSelect <---" );
           delay(5000);
       #endif
-      
+  output_7seg_setDot(false);     
   output_currentFrameNumber=0;
   output_nextFrameSwitchTime=0; 
   output_scene_gameSelect(programCharIndex);
  
 }
-
+/* --------------  scene ----------------- */
 void output_scene_gameSelect(byte programCharIndex) {
     if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
           if(++output_currentFrameNumber > 1) output_currentFrameNumber=0;
@@ -123,7 +126,7 @@ void output_sequence_startGame(byte programCharIndex) {
   byte pattern=B11111111;
   byte index=0;
 
-  output_7seg_setCharacter(output_7seg_charIndexMemory);
+  output_7seg_setCharacter(output_7seg_charIndexMemory); /* Restore char on 7seg */
   
   for(index=0;index<4;index++) {
     output_led_setPattern(pattern);
@@ -131,14 +134,31 @@ void output_sequence_startGame(byte programCharIndex) {
     bitClear(pattern,4+index);
     delay(game_start_frame_delay);   
   }
-  /* #TBD: Activation of dot here */
+  output_7seg_setDot(true); 
+  output_currentFrameNumber=0;
+  output_nextFrameSwitchTime=0;
 }
 
 void output_scene_pluggingPhase(byte connectionPattern) {
- 
 
-    output_led_setPattern(connectionPattern);
-  
+
+     if(millis()>output_nextFrameSwitchTime ) { /* time has come to change frame  (we dont care about oveflow at 50 days) */
+      if(++output_currentFrameNumber > 1) output_currentFrameNumber=0;
+      /* initialize new frame */
+      switch(output_currentFrameNumber) {
+         case 0: 
+                           output_7seg_setDot(true); 
+                            break;            
+         case 1: 
+                            output_7seg_setDot(false); 
+                            break;
+
+      } //switch
+      
+      output_nextFrameSwitchTime=millis()+game_plugphase_blink_interval;
+   } /* End of frame switch */
+   
+   output_led_setPattern(connectionPattern); /* This will also push the dot to the display */
 }
 
 /* *********************** */
@@ -147,12 +167,13 @@ void output_scene_pluggingPhase(byte connectionPattern) {
 void output_sequence_resultPhaseStart(byte resultPattern){ 
   byte overlayMask=B11111111;
   byte checkBit=B00000001;
+  output_7seg_setDot(false);
   
   for( checkBit=B00000001,overlayMask=B11111111;checkBit>B00000000;checkBit<<=1,overlayMask<<=1) {
    
       for(byte repeat=0;repeat<6;repeat++) {
-        if(repeat>>1) output_7seg_charPattern=~getledSegmentCharPattern(CHAR_INDEX_QUESTIONMARK) ;
-        else output_7seg_charPattern=~getledSegmentCharPattern(CHAR_INDEX_BLANK);  
+        if(repeat>>1) output_7seg_charPattern=getLedSegmentCharPattern(CHAR_INDEX_QUESTIONMARK) ;
+        else output_7seg_charPattern=getLedSegmentCharPattern(CHAR_INDEX_BLANK);  
         output_led_setPattern((resultPattern|overlayMask));
         delay(30);
         output_led_setPattern((resultPattern|overlayMask)^checkBit);
@@ -162,7 +183,8 @@ void output_sequence_resultPhaseStart(byte resultPattern){
    } // for checkBit
 
    /* final picture that is handed to the scene */
-   output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
+   output_7seg_setDot(true);
+   output_7seg_charPattern=getLedSegmentCharPattern(output_7seg_charIndexMemory);
    output_led_setPattern(resultPattern); 
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
@@ -179,22 +201,18 @@ void output_scene_resultPhase(byte resultPattern) {
           switch(output_currentFrameNumber) {
            case 1: 
                 output_led_setPattern(resultPattern);
-                /* #TBD: add blinking of dot here*/
                 break;
+                
            case 0: 
                output_led_setPattern(0);       
-               /* #TBD: add blinking of dot here*/                        
                break;
 
           } //switch
           output_nextFrameSwitchTime=millis()+game_result_blink_interval;
    } /* End of frame switch */
-
-   /*Frame refreshes */
-   switch(output_currentFrameNumber) {
-
-   }
 }
+
+
 /* *********************** */
 /*      socket test        */
 /* *********************** */
@@ -202,7 +220,8 @@ void output_scene_resultPhase(byte resultPattern) {
 void output_sequence_socket_test() {
    output_currentFrameNumber=0;
    output_nextFrameSwitchTime=0;
-   output_7seg_setCharacter(41); /* Tl character */
+   output_7seg_setDot(false);
+   output_7seg_setCharacter(44); /* TL character */
 }
 
 void output_scene_socket_test(byte socketNumber) {
@@ -246,12 +265,12 @@ void output_sequence_error() {
           output_led_setPattern(B10011001);
           delay(game_attention_blink_interval);
 
-          output_7seg_charPattern=~getledSegmentCharPattern(14); /* E */
+          output_7seg_charPattern=getLedSegmentCharPattern(14); /* E */
           output_led_setPattern(B01100110);
           delay(game_attention_blink_interval);
     }
 
-     output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
+     output_7seg_charPattern=getLedSegmentCharPattern(output_7seg_charIndexMemory);
      output_led_setPattern(0);
      output_currentFrameNumber=0;
 }
@@ -266,21 +285,27 @@ void output_led_setPattern(byte pattern) {  /* for convinence, can be ommited by
   output_push_data_to_led_bus();
 }
 
+void output_7seg_setDot(bool showDot)
+{
+  if(showDot) output_7seg_dotMask=getLedSegmentCharPattern(CHAR_INDEX_DOT);
+  else        output_7seg_dotMask=getLedSegmentCharPattern(CHAR_INDEX_BLANK);
+}
+
 void output_7seg_setCharacter(byte charIndex) {  /* for convinence, can be ommited by setting variable directly and call puhsh , internal we can set the variable directly */
   output_7seg_charIndexMemory=charIndex;
-  output_7seg_charPattern=~getledSegmentCharPattern(output_7seg_charIndexMemory);
+  output_7seg_charPattern=getLedSegmentCharPattern(output_7seg_charIndexMemory);
   output_push_data_to_led_bus();
 }
 
 void output_push_data_to_led_bus() {
   shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,output_led_pattern);
-  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,output_7seg_charPattern);
+  shiftOut(led_bus_data_pin, led_bus_clock_pin,MSBFIRST,~(output_7seg_charPattern|output_7seg_dotMask));
   digitalWrite(led_bus_storage_pin,HIGH);     
   digitalWrite(led_bus_storage_pin,LOW); 
 }
 
 
-byte getledSegmentCharPattern(byte index) { 
+byte getLedSegmentCharPattern(byte index) { 
 
 /* This is prepared by using a fancy google spreadsheet
  * The spreadsheet goes as follows 

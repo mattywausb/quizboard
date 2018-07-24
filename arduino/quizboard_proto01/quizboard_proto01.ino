@@ -114,6 +114,7 @@ void loop() {
   if(input_selectGotPressed() && game_state!=GST_SELECT_PHASE) {
             game_state=GST_SELECT_PHASE;
             output_sequence_gameSelectStart(game_getCharIndexForProgram());
+            input_setEncoderValue(game_selected_program);
             return; /* Bail out here, since we dont want the keypress to trigger more */
  }
  
